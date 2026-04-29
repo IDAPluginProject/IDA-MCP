@@ -115,8 +115,6 @@ def build_command(
     if _IS_WINDOWS:
         command.append("--msvc=latest")
         command.append("--windows-console-mode=disable")
-    elif _IS_LINUX:
-        command.append("--linux-console-mode=disable")
     elif _IS_MACOS:
         command.append("--macos-disable-console")
 
