@@ -11,8 +11,10 @@ from shared.models import IdaMcpConfig
 from .config_store import IdeConfigStore
 from .gateway_controller import GatewayController
 from .health import build_health_report
-from .installer import EnvironmentInstaller
+from .installer import DiaphoraInstaller, EnvironmentInstaller
 from .models import (
+    DiaphoraInstallationCheck,
+    DiaphoraInstallationResult,
     EnvironmentProbe,
     GatewayStatus,
     HealthReport,
@@ -39,6 +41,7 @@ class SupervisorManager:
         self._shared_db = self.config_store.database
         self.ida_mcp_config_store = ida_mcp_config_store
         self.installer = installer or EnvironmentInstaller()
+        self.diaphora_installer = DiaphoraInstaller()
         self.gateway_controller = gateway_controller or GatewayController(
             self.config_store
         )
@@ -130,6 +133,22 @@ class SupervisorManager:
             plugin_dir=self._resolve_plugin_dir(config),
             ida_mcp_config_dict=config_dict,
             on_progress=on_progress,
+        )
+
+    # ------------------------------------------------------------------
+    # Diaphora installation
+    # ------------------------------------------------------------------
+
+    def check_diaphora_installation(self) -> DiaphoraInstallationCheck:
+        config = self.get_ide_config()
+        return self.diaphora_installer.check_installation(
+            plugin_dir=self._resolve_plugin_dir(config),
+        )
+
+    def install_diaphora(self) -> DiaphoraInstallationResult:
+        config = self.get_ide_config()
+        return self.diaphora_installer.install(
+            plugin_dir=self._resolve_plugin_dir(config),
         )
 
     def _controller_with_log(

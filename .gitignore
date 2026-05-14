@@ -25,7 +25,7 @@ skills/*.zip
 .venv/
 Thumbs.db
 .DS_Store
-test/api_logs/
+ide/resources/ida_mcp/.artifacts/api_logs/
 *.i64
 *.id0
 *.id1

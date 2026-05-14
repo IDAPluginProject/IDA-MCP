@@ -28,21 +28,23 @@ IDA-MCP/
 ├── ide/                        # PySide6 桌面 IDE（主项目）
 │   ├── app/                    # UI 层
 │   ├── supervisor/             # 网关生命周期与安装管理
-│   ├── resources/ida_mcp/      # 打包的 ida_mcp 源码（安装到 IDA plugins/）
+│   ├── resources/ida_mcp/      # 打包的 IDA 插件、API 参考与 live-IDA 测试
 │   └── tests/
 ├── skills/                     # MCP skill 文档
-├── test/                       # 测试套件
-├── API.md                      # 工具与响应契约参考
+├── codemap.md                  # 仓库地图与边界说明
 ├── README.md / README_CN.md
 └── project.md / roadmap.md
 ```
 
-### 核心基础设施（`ida_mcp/` 内）
+完整工具与响应契约参考位于 `ide/resources/ida_mcp/API.md`。IDE 将
+`ide/resources/ida_mcp/` 视为可安装的插件资源，不在代码层面直接 import
+`ida_mcp` 包。
+
+### 核心基础设施（`ide/resources/ida_mcp/ida_mcp/` 内）
 
 * `rpc.py` - `@tool` / `@resource` / `@unsafe` 装饰器与注册机制
 * `sync.py` - `@idaread` / `@idawrite` IDA 线程同步装饰器
 * `utils.py` - 地址解析、分页、模式过滤等工具函数
-* `compat.py` - IDA 8.x/9.x 兼容层
 
 ### API 模块
 
@@ -64,7 +66,7 @@ IDA-MCP/
 * **MCP 资源**：REST 风格的 `ida://` URI 模式，提供面向单实例直连的只读数据访问
 * **多实例支持**：默认监听在 11338 的独立网关管理多个 IDA 实例
 * **默认偏向 HTTP**：仓库内默认配置为 `enable_http=true`、`enable_stdio=false`、`enable_unsafe=true`
-* **IDA 8.x/9.x 兼容**：兼容层处理 API 差异
+* **仅支持 IDA 9.x**：开发与测试只面向 IDA 9.x API，不再维护 IDA 7/8 兼容路径
 * **桌面 IDE**：PySide6 GUI 提供一键安装、配置、网关控制和状态监控
 
 ## 安装

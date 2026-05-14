@@ -28,21 +28,23 @@ IDA-MCP/
 ├── ide/                        # PySide6 desktop IDE (main project)
 │   ├── app/                    # UI layer
 │   ├── supervisor/             # Gateway lifecycle & installation
-│   ├── resources/ida_mcp/      # Bundled ida_mcp source (installed to IDA plugins/)
+│   ├── resources/ida_mcp/      # Bundled IDA plugin, API reference, and live-IDA tests
 │   └── tests/
 ├── skills/                     # MCP skill documentation
-├── test/                       # Test suite
-├── API.md                      # Tool & response contract reference
+├── codemap.md                  # Repository map and ownership boundaries
 ├── README.md / README_CN.md
 └── project.md / roadmap.md
 ```
 
-### Core Infrastructure (inside `ida_mcp/`)
+The full tool and response contract reference lives with the bundled plugin at
+`ide/resources/ida_mcp/API.md`. The IDE treats `ide/resources/ida_mcp/` as
+installable plugin resources and does not import the `ida_mcp` package directly.
+
+### Core Infrastructure (inside `ide/resources/ida_mcp/ida_mcp/`)
 
 * `rpc.py` - `@tool` / `@resource` / `@unsafe` decorators and registration
 * `sync.py` - `@idaread` / `@idawrite` IDA thread synchronization decorators
 * `utils.py` - Address parsing, pagination, pattern filtering utilities
-* `compat.py` - IDA 8.x/9.x compatibility layer
 
 ### API Modules
 
@@ -64,7 +66,7 @@ IDA-MCP/
 * **MCP Resources**: REST-like `ida://` URI patterns for read-only data access on direct instance connections
 * **Multi-instance Support**: A standalone gateway on port 11338 manages multiple IDA instances
 * **HTTP-first Defaults**: The bundled config defaults to `enable_http=true`, `enable_stdio=false`, and `enable_unsafe=true`
-* **IDA 8.x/9.x Compatible**: Compatibility layer handles API differences
+* **IDA 9.x Only**: Development and tests target IDA 9.x APIs only; IDA 7/8 compatibility paths are not maintained
 * **Desktop IDE**: PySide6 GUI for one-click install, config, gateway control, and status monitoring
 
 ## Installation

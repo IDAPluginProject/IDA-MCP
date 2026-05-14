@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from app.i18n import normalize_language
 from app.services.supervisor_client import SupervisorClient
 from supervisor.models import (
+    DiaphoraInstallationCheck,
+    DiaphoraInstallationResult,
     HealthReport,
     IdaMcpConfig,
     InstallationActionResult,
@@ -110,3 +112,11 @@ class SettingsService:
 
     def detect_ida_python(self, ida_dir: str) -> str | None:
         return self._supervisor_client.detect_ida_python(ida_dir)
+
+    # --- Diaphora ---
+
+    def check_diaphora_installation(self) -> DiaphoraInstallationCheck:
+        return self._supervisor_client.check_diaphora_installation()
+
+    def install_diaphora(self) -> DiaphoraInstallationResult:
+        return self._supervisor_client.install_diaphora()

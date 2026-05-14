@@ -35,6 +35,8 @@ python launcher.py
 - IDE 通过 subprocess 调用 `command.py` 启动 gateway
 - 安装探测只扫描 IDA 全局 plugins 目录，不扫描 resources 目录
 - 所有路径通过 `shared/paths.py` 管理，支持开发态和 Nuitka 打包态
+- 插件 API 契约文档位于 `resources/ida_mcp/API.md`
+- 插件 live-IDA 测试位于 `resources/ida_mcp/test/`，IDE 自身测试位于 `tests/`
 
 ## 打包
 

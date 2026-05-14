@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from supervisor.installer import EnvironmentInstaller
+from supervisor.installer import DiaphoraInstaller, EnvironmentInstaller
 from supervisor.platform_detector import (
     PlatformDetector,
     _probe_ida_python_via_idapyswitch,
@@ -133,6 +133,66 @@ def test_repair_config_uses_explicit_config_path(tmp_path: Path) -> None:
     assert result.created is True
     assert result.config_path == str(explicit_config)
     assert explicit_config.read_text(encoding="utf-8") == "enable_http = true\n"
+
+
+def _make_diaphora_resources(root: Path, *, complete: bool = True) -> Path:
+    resources = root / "diaphora"
+    plugin = resources / "plugin"
+    plugin.mkdir(parents=True)
+    (plugin / "diaphora_plugin.py").write_text("# wrapper\n", encoding="utf-8")
+    (plugin / "diaphora_plugin.cfg").write_text(
+        "[Diaphora]\npath=/path/to/diaphora/\n",
+        encoding="utf-8",
+    )
+    if complete:
+        for name in ("diaphora.py", "diaphora_ida.py", "diaphora_config.py"):
+            (resources / name).write_text("# core\n", encoding="utf-8")
+    return resources
+
+
+def test_diaphora_install_writes_cfg_and_reports_success(tmp_path: Path) -> None:
+    resources = _make_diaphora_resources(tmp_path)
+    plugin_dir = tmp_path / "ida" / "plugins"
+
+    result = DiaphoraInstaller(resources).install(plugin_dir)
+
+    assert result.ok is True
+    assert result.installed is True
+    assert result.check.cfg_path_correct is True
+    assert result.check.bundle_files_exist is True
+    cfg = (plugin_dir / "diaphora_plugin.cfg").read_text(encoding="utf-8")
+    assert str(resources).replace("\\", "/") in cfg
+
+
+def test_diaphora_install_fails_when_bundle_core_files_missing(tmp_path: Path) -> None:
+    resources = _make_diaphora_resources(tmp_path, complete=False)
+    plugin_dir = tmp_path / "ida" / "plugins"
+
+    result = DiaphoraInstaller(resources).install(plugin_dir)
+
+    assert result.ok is False
+    assert result.installed is False
+    assert result.check.bundle_files_exist is False
+    assert "bundled diaphora files are missing" in result.warnings
+
+
+def test_diaphora_check_rejects_cfg_pointing_elsewhere(tmp_path: Path) -> None:
+    resources = _make_diaphora_resources(tmp_path)
+    plugin_dir = tmp_path / "ida" / "plugins"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "diaphora_plugin.py").write_text("# wrapper\n", encoding="utf-8")
+    (plugin_dir / "diaphora_plugin.cfg").write_text(
+        "[Diaphora]\npath=C:/other/diaphora/\n",
+        encoding="utf-8",
+    )
+
+    check = DiaphoraInstaller(resources).check_installation(plugin_dir)
+
+    assert check.plugin_py_exists is True
+    assert check.plugin_cfg_exists is True
+    assert check.cfg_path_correct is False
+    assert check.bundle_files_exist is True
+    assert check.summary == "diaphora installation is incomplete"
 
 
 # ------------------------------------------------------------------

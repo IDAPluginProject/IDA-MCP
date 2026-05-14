@@ -23,6 +23,11 @@ def get_ida_mcp_resources_dir() -> Path:
     return get_resources_root() / "ida_mcp"
 
 
+def get_diaphora_resources_dir() -> Path:
+    """Return the diaphora bundled resource directory."""
+    return get_resources_root() / "diaphora"
+
+
 def get_logs_root() -> Path:
     """Return the logs directory for the current runtime mode."""
     return get_project_root() / "logs"

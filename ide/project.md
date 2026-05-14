@@ -9,6 +9,7 @@
 - 文件工作区与预览
 - 设置页面（中英双语）
 - 健康检查与环境探测
+- Chat / skill / MCP 客户端编排（IDE 产品层）
 
 ## 真实目录树
 
@@ -49,10 +50,13 @@ ide/
 │   ├── ida_mcp_config.py     # ida_mcp config.conf 读写
 │   └── runtime.py            # 运行时辅助
 ├── resources/
-│   └── ida_mcp/              # 受管资源（安装到 IDA plugins/）
-│       ├── ida_mcp.py
-│       ├── ida_mcp/          # 完整 ida_mcp 包
-│       └── requirements.txt
+│   ├── ida_mcp/              # 受管 IDA 插件资源（安装到 IDA plugins/）
+│   │   ├── ida_mcp.py
+│   │   ├── ida_mcp/          # 完整 ida_mcp 包
+│   │   ├── test/             # live-IDA 插件测试
+│   │   ├── API.md            # MCP 工具/资源/HTTP 契约
+│   │   └── requirements.txt
+│   └── diaphora/             # 受管 Diaphora 插件资源
 ├── build_helpers/
 │   └── build_nuitka.py       # Nuitka 打包
 └── tests/                    # pytest 测试
@@ -117,3 +121,5 @@ DirectoryTreeWidget → file_preview_service.classify_file() → {Hex/Code/Image
 - 安装时由 `install_runner.py` 将资源复制到 IDA plugins 目录
 - 启动 gateway 时通过 `command.py`（subprocess）调用 ida_mcp 的功能
 - `installer.py` 的探测逻辑只扫描 IDA 全局 plugins 目录，不扫描 resources 目录
+- `ide/resources/ida_mcp/test/` 是插件集成测试资产，不随安装流程复制到 IDA plugins 目录
+- `ide/resources/ida_mcp/API.md` 是插件契约文档，跟随插件资源维护；根目录不再保留 API 参考副本

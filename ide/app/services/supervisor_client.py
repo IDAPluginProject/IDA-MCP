@@ -6,6 +6,8 @@ from typing import Callable
 
 from supervisor.api import create_manager
 from supervisor.models import (
+    DiaphoraInstallationCheck,
+    DiaphoraInstallationResult,
     HealthReport,
     IdaMcpConfig,
     InstallationActionResult,
@@ -82,6 +84,14 @@ class SupervisorClient:
 
     def detect_ida_python(self, ida_dir: str) -> str | None:
         return self._manager.installer.detect_ida_python(ida_dir)
+
+    # --- Diaphora ---
+
+    def check_diaphora_installation(self) -> DiaphoraInstallationCheck:
+        return self._manager.check_diaphora_installation()
+
+    def install_diaphora(self) -> DiaphoraInstallationResult:
+        return self._manager.install_diaphora()
 
     # --- Model providers ---
 

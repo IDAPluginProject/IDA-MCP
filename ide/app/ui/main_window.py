@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -75,8 +75,10 @@ class MainWindow(QMainWindow):
         if _icon is not None:
             self.setWindowIcon(_icon)
 
-        # --- workspace selection ---
-        workspace_path = self._ensure_workspace()
+        # Load the saved workspace immediately, but defer any modal prompts
+        # until after the main window has been shown.
+        workspace_path = self._load_workspace_path()
+        self._workspace_path = workspace_path
 
         # --- child widgets ---
         self._page_stack = QStackedWidget()
@@ -91,9 +93,8 @@ class MainWindow(QMainWindow):
         self._status_detail_labels: dict[str, QLabel] = {}
         self._status_buttons: dict[str, QPushButton] = {}
 
-        self._chat_service = ChatService(workspace_path=workspace_path)
+        self._chat_service: ChatService | None = None
         self._chat_page = ChatPage(self._i18n, supervisor_client=self.supervisor_client)
-        self._chat_page.set_chat_service(self._chat_service)
 
         self._plan_view = QTreeWidget()
 
@@ -121,9 +122,7 @@ class MainWindow(QMainWindow):
         )
 
         self._build_shell()
-        self._check_ida_mcp_install()
-        self._gateway.refresh()
-        self._chat_service.start()
+        QTimer.singleShot(0, self._finish_startup)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -135,23 +134,32 @@ class MainWindow(QMainWindow):
     def _load_language(self) -> str:
         return normalize_language(self.supervisor_client.get_ide_config().language)
 
-    def _ensure_workspace(self) -> str:
-        """Show the workspace selector on every launch (VS Code-style).
+    def _load_workspace_path(self) -> str:
+        path = self.supervisor_client.get_ide_config().workspace_path
+        if path and Path(path).is_dir():
+            return path
+        return ""
 
-        Recent workspaces are listed for quick re-open.  The user may also
-        browse for a new folder or skip entirely.
+    def _ensure_workspace(self) -> str:
+        """Return a usable workspace, prompting only when one is not configured.
+
+        Recent workspaces are listed for quick open. The prompt runs after the
+        main window is visible so startup is not blocked by a hidden modal.
         """
-        from pathlib import Path
         from shared.database import DatabaseStore
 
         config = self.supervisor_client.get_ide_config()
         path = config.workspace_path
+        if path and Path(path).is_dir():
+            return path
 
-        # Always prompt — pre-select the last workspace in the dialog if valid
+        if path:
+            self.supervisor_client.update_ide_config(workspace_path="")
+
         db = DatabaseStore()
         dialog = WorkspaceSelectorDialog(db, parent=self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return path or ""
+            return ""
 
         chosen = dialog.selected_path()
         if chosen == "":
@@ -167,6 +175,18 @@ class MainWindow(QMainWindow):
         WorkspaceSelectorDialog.record_workspace(db, chosen)
         return chosen
 
+    def _finish_startup(self) -> None:
+        workspace_path = self._ensure_workspace()
+        if workspace_path and workspace_path != self._workspace_path:
+            self._workspace_path = workspace_path
+            self._dir_tree.open_directory(workspace_path)
+
+        self._chat_service = ChatService(workspace_path=workspace_path)
+        self._chat_page.set_chat_service(self._chat_service)
+        self._check_ida_mcp_install()
+        self._gateway.refresh()
+        self._chat_service.start()
+
     def _check_ida_mcp_install(self) -> None:
         """Prompt to install IDA-MCP on first run when ida_dir is not configured."""
         config = self.supervisor_client.get_ide_config()
@@ -178,17 +198,15 @@ class MainWindow(QMainWindow):
         if config.ida_dir:
             return
 
-        check = self.supervisor_client.check_installation()
-
         # Derive a default IDA dir from the plugin_dir (go up one level)
         default_ida_dir = ""
-        if check.plugin_dir:
-            p = Path(check.plugin_dir)
+        if config.plugin_dir:
+            p = Path(config.plugin_dir)
             if p.name.lower() == "plugins":
                 default_ida_dir = str(p.parent)
 
         dialog = FirstRunInstallDialog(
-            default_ida_dir, check.plugin_dir or "", parent=self
+            default_ida_dir, config.plugin_dir or "", parent=self
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             # User skipped — suppress future prompts
