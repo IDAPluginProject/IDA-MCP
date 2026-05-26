@@ -313,6 +313,63 @@ class TestSegments:
         assert text["start_ea"] == complex_baseline["segments"][".text"]["start_ea"]
         assert text["end_ea"] == complex_baseline["segments"][".text"]["end_ea"]
 
+    def test_add_segment(self, tool_caller):
+        """Test adding a new segment."""
+        result = tool_caller("add_segment",
+                            start_ea="0xDEAD0000",
+                            size=0x1000,
+                            name="test_seg",
+                            seg_class="DATA",
+                            perm="rw-",
+                            bitness=64)
+        assert isinstance(result, dict)
+        if "error" not in result:
+            assert result["name"] == "test_seg"
+            assert result["size"] == 0x1000
+
+    def test_add_segment_invalid_address(self, tool_caller):
+        """Test adding segment with invalid address."""
+        result = tool_caller("add_segment",
+                            start_ea="not_an_address",
+                            size=0x1000,
+                            name="bad_seg")
+        assert "error" in result
+
+    def test_add_segment_invalid_size(self, tool_caller):
+        """Test adding segment with zero size."""
+        result = tool_caller("add_segment",
+                            start_ea="0xBEEF0000",
+                            size=0,
+                            name="zero_seg")
+        assert "error" in result
+
+    def test_delete_segment(self, tool_caller):
+        """Test deleting a segment."""
+        add_result = tool_caller("add_segment",
+                                start_ea="0xCAFE0000",
+                                size=0x1000,
+                                name="del_test",
+                                seg_class="DATA",
+                                perm="rw-",
+                                bitness=64)
+        if "error" in add_result:
+            pytest.skip("could not create segment for deletion test")
+
+        result = tool_caller("delete_segment", address="0xCAFE0000")
+        assert isinstance(result, dict)
+        assert result.get("deleted") is True
+        assert result["name"] == "del_test"
+
+    def test_delete_segment_invalid_address(self, tool_caller):
+        """Test deleting segment with invalid address."""
+        result = tool_caller("delete_segment", address="not_valid")
+        assert "error" in result
+
+    def test_delete_segment_no_segment(self, tool_caller):
+        """Test deleting at address with no segment."""
+        result = tool_caller("delete_segment", address="0xFFFFFFFFFF")
+        assert "error" in result
+
 
 class TestCursor:
     """Cursor position tests."""

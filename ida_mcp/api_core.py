@@ -13,6 +13,8 @@ Provides tools:
     - list_imports         list imports
     - list_exports         list exports
     - list_segments        list memory segments
+    - add_segment          add a new memory segment
+    - delete_segment       delete a memory segment
     - get_cursor           get current cursor position
 """
 from __future__ import annotations
@@ -23,9 +25,9 @@ import stat
 from typing import Annotated, Optional, List
 
 from .rpc import tool
-from .sync import idaread
+from .sync import idaread, idawrite
 from .type_utils import iter_local_type_ordinals
-from .utils import paginate, pattern_filter, normalize_arch, hex_addr
+from .utils import paginate, pattern_filter, normalize_arch, hex_addr, parse_address
 from .strings_cache import (
     get_strings_cache as _shared_get_strings_cache,
     init_strings_cache as _shared_init_strings_cache,
@@ -593,6 +595,99 @@ def list_segments() -> dict:
         pass
     
     return {"total": len(items), "items": items}
+
+
+@tool
+@idawrite
+def add_segment(
+    start_ea: Annotated[str, "Segment start address (hex string, e.g. '0x401000')"],
+    size: Annotated[int, "Segment size in bytes"],
+    name: Annotated[str, "Segment name (e.g. '.text', 'my_seg')"],
+    seg_class: Annotated[str, "Segment class (e.g. 'CODE', 'DATA', 'BSS')"] = "DATA",
+    perm: Annotated[str, "Permission string: combination of r/w/x (e.g. 'rwx', 'r-x')"] = "rw-",
+    bitness: Annotated[int, "Address size: 16, 32, or 64"] = 64,
+) -> dict:
+    """Add a new memory segment to the IDB."""
+    parsed = parse_address(start_ea)
+    if not parsed["ok"] or parsed["value"] is None:
+        return {"error": "invalid start_ea"}
+
+    start = parsed["value"]
+
+    if size <= 0:
+        return {"error": "size must be positive"}
+    if size > 0x100000000:
+        return {"error": "size too large (max 4GB)"}
+
+    end = start + size
+
+    if ida_segment.getseg(start):
+        return {"error": "address already belongs to a segment"}
+
+    bitness_map = {16: 0, 32: 1, 64: 2}
+    if bitness not in bitness_map:
+        return {"error": "bitness must be 16, 32, or 64"}
+
+    perm_val = 0
+    if "r" in perm:
+        perm_val |= ida_segment.SEGPERM_READ
+    if "w" in perm:
+        perm_val |= ida_segment.SEGPERM_WRITE
+    if "x" in perm:
+        perm_val |= ida_segment.SEGPERM_EXEC
+
+    seg = ida_segment.segment_t()
+    seg.start_ea = start
+    seg.end_ea = end
+    seg.perm = perm_val
+    seg.bitness = bitness_map[bitness]
+
+    ok = ida_segment.add_segm_ex(seg, name, seg_class, 0)
+    if not ok:
+        return {"error": "add_segm_ex failed"}
+
+    return {
+        "name": name,
+        "start_ea": hex_addr(start),
+        "end_ea": hex_addr(end),
+        "size": size,
+        "class": seg_class,
+        "perm": perm,
+        "bitness": bitness,
+    }
+
+
+@tool
+@idawrite
+def delete_segment(
+    address: Annotated[str, "Any address within the segment to delete (hex string)"],
+    flags: Annotated[int, "Deletion flags (0=normal, 1=SEGMOD_KILL: disable addresses)"] = 0,
+) -> dict:
+    """Delete a memory segment from the IDB."""
+    parsed = parse_address(address)
+    if not parsed["ok"] or parsed["value"] is None:
+        return {"error": "invalid address"}
+
+    ea = parsed["value"]
+    seg = ida_segment.getseg(ea)
+    if not seg:
+        return {"error": "no segment at this address"}
+
+    seg_name = ida_segment.get_segm_name(seg)
+    seg_start = seg.start_ea
+    seg_end = seg.end_ea
+
+    ok = ida_segment.del_segm(seg_start, flags)
+    if not ok:
+        return {"error": "del_segm failed"}
+
+    return {
+        "deleted": True,
+        "name": seg_name,
+        "start_ea": hex_addr(seg_start),
+        "end_ea": hex_addr(seg_end),
+        "size": seg_end - seg_start,
+    }
 
 
 # ============================================================================
