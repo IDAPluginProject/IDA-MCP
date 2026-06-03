@@ -1,9 +1,7 @@
-"""Shared FastMCP Server instance.
+"""Gateway FastMCP proxy server instance.
 
-This module creates a FastMCP server and registers all tools.
-Both ida_mcp_proxy.py and registry_server.py should import the server from this module.
-
-This ensures stdio and HTTP transports use the exact same server instance.
+This module creates the FastMCP server used by the HTTP gateway proxy and
+registers all forwarded tools.
 """
 from __future__ import annotations
 

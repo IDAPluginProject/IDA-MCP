@@ -316,17 +316,21 @@ class TestSegments:
     def test_add_segment(self, tool_caller, metadata):
         """Test adding a new segment."""
         bitness = metadata.get("bits", 64)
-        result = tool_caller("add_segment",
-                            start_ea="0xDEAD0000",
-                            size=0x1000,
-                            name="test_seg",
-                            seg_class="DATA",
-                            perm="rw-",
-                            bitness=bitness)
-        assert isinstance(result, dict)
-        assert "error" not in result, f"add_segment failed: {result}"
-        assert result["name"] == "test_seg"
-        assert result["size"] == 0x1000
+        tool_caller("delete_segment", address="0xDEAD0000")
+        try:
+            result = tool_caller("add_segment",
+                                start_ea="0xDEAD0000",
+                                size=0x1000,
+                                name="test_seg",
+                                seg_class="DATA",
+                                perm="rw-",
+                                bitness=bitness)
+            assert isinstance(result, dict)
+            assert "error" not in result, f"add_segment failed: {result}"
+            assert result["name"] == "test_seg"
+            assert result["size"] == 0x1000
+        finally:
+            tool_caller("delete_segment", address="0xDEAD0000")
 
     def test_add_segment_invalid_address(self, tool_caller):
         """Test adding segment with invalid address."""

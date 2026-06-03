@@ -43,7 +43,7 @@
 
 - `command.py` 与 `control.py` 提供脚本与手工操作入口。
 - `../API.md` 维护 tool/resource/internal HTTP 契约。
-- `../test/` 保证多 transport、多模块行为稳定。
+- `../test/` 保证 HTTP、多模块行为稳定。
 
 ## 当前基线
 
@@ -115,7 +115,7 @@
 
 - 增补 gateway / proxy / lifecycle / resources 测试。
 - 提高分析与修改接口的回归覆盖。
-- 明确 stdio、HTTP proxy、direct instance 三类 transport 测试矩阵。
+- 明确 HTTP gateway proxy 与 direct instance HTTP 的测试矩阵。
 
 ## 阶段规划
 

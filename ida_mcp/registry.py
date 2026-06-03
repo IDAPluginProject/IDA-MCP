@@ -27,7 +27,6 @@ from .config import (
     get_http_port,
     get_request_timeout,
     is_http_enabled,
-    is_stdio_enabled,
 )
 
 
@@ -408,7 +407,7 @@ def register_pending_instance(
     lifecycle_state: str = "starting",
 ) -> bool:
     """Register a launched-but-not-ready IDA process with the gateway."""
-    if not is_stdio_enabled() and not is_http_enabled():
+    if not is_http_enabled():
         return False
     if not ensure_registry_server():
         return False
@@ -461,7 +460,7 @@ def update_instance_status(
 
 def init_and_register(port: int, input_file: str | None, idb_path: str | None) -> None:
     """Register the current IDA instance with the standalone gateway."""
-    if not is_stdio_enabled() and not is_http_enabled():
+    if not is_http_enabled():
         return
     if not ensure_registry_server():
         raise RuntimeError(

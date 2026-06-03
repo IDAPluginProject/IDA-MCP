@@ -5,7 +5,6 @@ Reads the config.conf file and provides access to all configurable options.
 Configuration Options
 ====================
 Transport switches:
-    - enable_stdio: whether to enable stdio mode (default false)
     - enable_http: whether to enable HTTP proxy mode (default true)
     - enable_unsafe: whether to enable unsafe tools (default false)
     - wsl_path_bridge: whether to enable WSL/Windows path bridging (default false)
@@ -43,7 +42,6 @@ _CONFIG_FILE = os.path.join(_CONFIG_DIR, "config.conf")
 # default configuration
 _DEFAULT_CONFIG = {
     # transport switches
-    "enable_stdio": False,  # whether to enable stdio mode (coordinator)
     "enable_http": True,  # whether to enable HTTP proxy mode
     "enable_unsafe": False,  # whether to enable unsafe tools
     "wsl_path_bridge": False,  # whether to enable WSL/Windows path bridging
@@ -334,12 +332,6 @@ def is_debug_enabled() -> bool:
 # ============================================================================
 # Transport switches
 # ============================================================================
-
-
-def is_stdio_enabled() -> bool:
-    """Whether stdio mode (coordinator) is enabled."""
-    config = load_config()
-    return bool(config.get("enable_stdio", False))
 
 
 def is_http_enabled() -> bool:

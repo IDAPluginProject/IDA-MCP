@@ -20,7 +20,6 @@ REQUEST_TIMEOUT = 30
 _LOG_DIR = str(Path(__file__).resolve().parent.parent / ".artifacts" / "api_logs")
 
 _uri_call_logs: Dict[str, List[Dict[str, Any]]] = {
-    "stdio": [],
     "http": [],
 }
 
@@ -81,7 +80,7 @@ def _save_uri_log() -> None:
 atexit.register(_save_uri_log)
 
 
-async def _read_resource_async(uri: str, port: int, transport: str = "stdio") -> Dict[str, Any]:
+async def _read_resource_async(uri: str, port: int, transport: str = "http") -> Dict[str, Any]:
     start_time = time.perf_counter()
     try:
         from fastmcp import Client
@@ -113,11 +112,11 @@ async def _read_resource_async(uri: str, port: int, transport: str = "stdio") ->
         return {"uri": uri, "error": str(exc)}
 
 
-def read_resource(uri: str, port: int, transport: str = "stdio") -> Dict[str, Any]:
+def read_resource(uri: str, port: int, transport: str = "http") -> Dict[str, Any]:
     return asyncio.run(_read_resource_async(uri, port, transport))
 
 
-async def _list_resources_async(port: int, transport: str = "stdio") -> Dict[str, Any]:
+async def _list_resources_async(port: int, transport: str = "http") -> Dict[str, Any]:
     start_time = time.perf_counter()
     try:
         from fastmcp import Client
@@ -146,7 +145,7 @@ async def _list_resources_async(port: int, transport: str = "stdio") -> Dict[str
         return {"error": str(exc)}
 
 
-def list_resources(port: int, transport: str = "stdio") -> Dict[str, Any]:
+def list_resources(port: int, transport: str = "http") -> Dict[str, Any]:
     return asyncio.run(_list_resources_async(port, transport))
 
 
@@ -179,9 +178,8 @@ def _resource_function_address(complex_baseline: Dict[str, Any]) -> str:
 
 
 @pytest.fixture
-def resource_transport(request):
-    transport = request.config.getoption("--transport", "stdio")
-    return "stdio" if transport == "both" else transport
+def resource_transport():
+    return "http"
 
 
 class TestResourceDiscovery:

@@ -47,16 +47,14 @@ ida_mcp/
     ├── lifecycle.py            # open_in_ida / close / staging / path bridge
     ├── _http.py                # gateway/internal HTTP 请求辅助
     ├── _state.py               # 实例选择与路由状态
-    ├── _server.py              # HTTP/stdio proxy 共享 FastMCP server
-    ├── http_server.py          # HTTP proxy transport 入口
-    └── ida_mcp_proxy.py        # stdio proxy 入口
+    └── _server.py              # HTTP gateway proxy FastMCP server
 ```
 
 ## 模块边界
 
 ### 配置与注册基础设施
 
-- `config.py` 读取 transport、端口、路径、超时和 unsafe 策略。
+- `config.py` 读取 HTTP、端口、路径、超时和 unsafe 策略。
 - `rpc.py` 定义 tool/resource/unsafe 注册约定。
 - `api_loader.py` 汇总导入 `api_*`，触发装饰器注册 side effect。
 - `sync.py` 是所有 IDA SDK 调用的线程边界。

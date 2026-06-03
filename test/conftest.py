@@ -3,20 +3,17 @@
 测试框架设计：
 1. gateway_internal_available - 检查 gateway 内部 API 是否运行
 2. instance_port - 获取可用 IDA 实例端口
-3. tool_caller - 工具调用函数（支持 stdio 和 http 两种模式）
+3. tool_caller - 通过 HTTP proxy 调用工具
 4. 前置信息 fixtures（session 级别缓存）:
    - first_function - 获取第一个函数信息
    - first_string - 获取第一个字符串信息
    - first_global - 获取第一个全局变量信息
    - metadata - 获取 IDB 元数据
-5. API 调用日志 - 保存到 .artifacts/api_logs/ 目录
-   - stdio 模式: stdio_*.json
-   - http 模式: http_*.json
+5. API 调用日志 - 保存到 .artifacts/api_logs/ 目录，文件名为 http_*.json
 
 运行方式：
-    pytest                          # 运行所有测试（两种模式）
-    pytest --transport=stdio        # 只运行 stdio 模式
-    pytest --transport=http         # 只运行 http 模式
+    pytest
+    pytest --transport=http
 """
 
 import sys
@@ -29,7 +26,6 @@ if _pkg_root not in sys.path:
 
 import pytest
 import urllib.request
-import urllib.error
 import json
 import os
 import asyncio
@@ -49,9 +45,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--transport",
         action="store",
-        default="both",
-        choices=["stdio", "http", "both"],
-        help="Transport mode to test: stdio, http, or both (default: both)",
+        default="http",
+        choices=["http"],
+        help="Transport mode to test: http (default: http)",
     )
     parser.addoption(
         "--allow-destructive-lifecycle",
@@ -82,7 +78,6 @@ HTTP_PROXY_PATH = "/mcp"
 
 # 按传输模式分开的日志
 _api_call_logs: Dict[str, List[Dict[str, Any]]] = {
-    "stdio": [],
     "http": [],
 }
 
@@ -179,42 +174,6 @@ _NO_PORT_INJECTION_TOOLS = {
 } | _PROXY_ONLY_TOOLS
 
 
-def _call_proxy_only_tool_locally(tool_name: str, params: dict) -> Any:
-    """Execute proxy-only lifecycle tools locally for stdio-mode test coverage."""
-    if tool_name == "open_in_ida":
-        from ida_mcp.proxy import lifecycle
-
-        return lifecycle.open_in_ida(
-            params.get("file_path", ""),
-            extra_args=params.get("extra_args"),
-        )
-    if tool_name == "close_ida":
-        from ida_mcp.proxy import lifecycle
-
-        return lifecycle.close_ida(
-            save=bool(params.get("save", True)),
-            port=params.get("port"),
-            timeout=params.get("timeout"),
-        )
-
-    return {"error": f"Unsupported proxy-only tool: {tool_name}"}
-
-
-def _is_proxy_transport_error(result: Any) -> bool:
-    if not isinstance(result, dict):
-        return False
-    error = result.get("error")
-    if isinstance(error, dict):
-        error = error.get("message", "")
-    if not isinstance(error, str):
-        return False
-    return (
-        "500 Internal Server Error" in error
-        or "Unexpected content type" in error
-        or "HTTP proxy not available" in error
-    )
-
-
 def _get_api_category(tool_name: str) -> str:
     """获取 API 分类。"""
     return _API_CATEGORIES.get(tool_name, "other")
@@ -299,7 +258,7 @@ def _save_api_log() -> None:
         # 保存汇总文件
     try:
         # 检查是否存在 uri.json（由 test_resources.py 生成）
-        for prefix in ["stdio_", "http_", ""]:
+        for prefix in ["http_", ""]:
             uri_file = os.path.join(_LOG_DIR, f"{prefix}uri.json")
             if os.path.exists(uri_file):
                 all_files.append(f"{prefix}uri.json")
@@ -344,7 +303,7 @@ def parse_addr(addr: Union[str, int]) -> int:
 
 
 # ============================================================================
-# HTTP 工具函数 (stdio 模式 - 通过 gateway internal API)
+# HTTP 工具函数
 # ============================================================================
 
 
@@ -358,85 +317,8 @@ def http_get(url: str, timeout: float = 5.0) -> Any:
         return {"error": str(e)}
 
 
-def http_post(url: str, data: dict, timeout: float = 10.0) -> Any:
-    """发送 POST 请求。"""
-    try:
-        body = json.dumps(data).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=body, headers={"Content-Type": "application/json"}, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def call_tool_stdio(tool_name: str, params: dict, port: Optional[int] = None) -> Any:
-    """通过 gateway internal API 调用 IDA 工具。
-
-    注意：测试里的“stdio”路径验证 gateway 转发语义，不会单独拉起 stdio proxy 进程。
-    """
-    if tool_name in _PROXY_ONLY_TOOLS:
-        # lifecycle 的 open_in_ida 是 proxy-side tool；测试中的“stdio”路径不单独
-        # 启动 stdio proxy 进程，因此优先复用 HTTP proxy。若当前环境残留了一个
-        # 返回通用 500 的旧/坏 gateway，则退回到本地 proxy-side API，仅验证语义。
-        if _is_http_proxy_available():
-            data = call_tool_http(tool_name, params, None)
-            if not _is_proxy_transport_error(data):
-                return data
-        else:
-            data = {
-                "error": f"HTTP proxy not available for proxy-only tool: {tool_name}"
-            }
-
-        import time
-
-        start_time = time.perf_counter()
-        local_data = _call_proxy_only_tool_locally(tool_name, params)
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        _log_api_call("stdio", tool_name, params, port, local_data, duration_ms)
-        return local_data
-
-    import time
-
-    start_time = time.perf_counter()
-    call_params = dict(params)
-    route_timeout = call_params.pop("timeout", None)
-    route_port = call_params.pop("port", None)
-    if port is None and isinstance(route_port, int):
-        port = route_port
-
-    url = f"http://{GATEWAY_INTERNAL_HOST}:{GATEWAY_INTERNAL_PORT}{GATEWAY_INTERNAL_BASE_PATH}/call"
-    payload = {
-        "tool": tool_name,
-        "params": call_params,
-    }
-    if port:
-        payload["port"] = port
-    if isinstance(route_timeout, int) and route_timeout > 0:
-        payload["timeout"] = route_timeout
-    result = http_post(url, payload)
-
-    duration_ms = (time.perf_counter() - start_time) * 1000
-
-    # 协调器返回 {"tool": ..., "data": ...} 格式，提取 data 字段
-    data = result
-    if isinstance(result, dict) and "data" in result:
-        data = result["data"]
-
-    # 记录 API 调用
-    _log_api_call("stdio", tool_name, params, port, data, duration_ms)
-
-    return data
-
-
-# ============================================================================
-# HTTP 工具函数 (http 模式 - 通过 HTTP 代理)
-# ============================================================================
-
-
 def call_tool_http(tool_name: str, params: dict, port: Optional[int] = None) -> Any:
-    """通过 HTTP 代理调用 IDA 工具 (http 模式)。"""
+    """通过 HTTP 代理调用 IDA 工具。"""
     import time
 
     start_time = time.perf_counter()
@@ -587,21 +469,15 @@ def _instance_matches_sample(instance: dict, sample_name: str) -> bool:
 
 
 def pytest_generate_tests(metafunc):
-    """根据命令行参数生成测试参数。"""
+    """HTTP is the only supported transport."""
     if "transport_mode" in metafunc.fixturenames:
-        transport = metafunc.config.getoption("--transport")
-        if transport == "both":
-            modes = ["stdio", "http"]
-        else:
-            modes = [transport]
-        metafunc.parametrize("transport_mode", modes, scope="session")
+        metafunc.parametrize("transport_mode", ["http"], scope="session")
 
 
 @pytest.fixture(scope="session")
-def transport_mode(request):
+def transport_mode():
     """获取当前测试的传输模式。"""
-    # 默认值，如果没有参数化
-    return getattr(request, "param", "stdio")
+    return "http"
 
 
 @pytest.fixture(scope="session")
@@ -699,33 +575,16 @@ def baseline_string(complex_baseline, strings_cache):
 
 
 @pytest.fixture
-def tool_caller(request, instance_port):
-    """返回工具调用函数（根据传输模式选择）。"""
-    # 获取传输模式
-    transport = getattr(request, "param", None)
-    if transport is None:
-        # 尝试从命令行获取
-        transport = request.config.getoption("--transport", "stdio")
-        if transport == "both":
-            transport = "stdio"  # 默认使用 stdio
+def tool_caller(instance_port):
+    """返回 HTTP 工具调用函数。"""
+    if not _is_http_proxy_available():
+        pytest.skip("HTTP proxy not available")
 
-    if transport == "http":
-        # 检查 HTTP 代理可用性
-        if not _is_http_proxy_available():
-            pytest.skip("HTTP proxy not available")
-
-        def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
-            call_params = {**(params or {}), **kwargs}
-            route_port = call_params.get("port")
-            selected_port = route_port if isinstance(route_port, int) else instance_port
-            return call_tool_http(tool_name, call_params, selected_port)
-    else:
-
-        def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
-            call_params = {**(params or {}), **kwargs}
-            route_port = call_params.get("port")
-            selected_port = route_port if isinstance(route_port, int) else instance_port
-            return call_tool_stdio(tool_name, call_params, selected_port)
+    def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
+        call_params = {**(params or {}), **kwargs}
+        route_port = call_params.get("port")
+        selected_port = route_port if isinstance(route_port, int) else instance_port
+        return call_tool_http(tool_name, call_params, selected_port)
 
     return caller
 
@@ -738,7 +597,7 @@ def tool_caller(request, instance_port):
 @pytest.fixture(scope="session")
 def metadata(instance_port) -> Dict[str, Any]:
     """获取 IDB 元数据（缓存）。"""
-    result = call_tool_stdio("get_metadata", {}, instance_port)
+    result = call_tool_http("get_metadata", {}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot get metadata: {result['error']}")
     return result
@@ -748,7 +607,7 @@ def metadata(instance_port) -> Dict[str, Any]:
 def functions_cache(instance_port) -> List[Dict[str, Any]]:
     """获取函数列表缓存（前 100 个）。"""
     # 显式传递所有参数以兼容签名问题
-    result = call_tool_stdio(
+    result = call_tool_http(
         "list_functions", {"offset": 0, "count": 100}, instance_port
     )
     if "error" in result:
@@ -760,7 +619,7 @@ def functions_cache(instance_port) -> List[Dict[str, Any]]:
 def strings_cache(instance_port) -> List[Dict[str, Any]]:
     """获取字符串列表缓存（前 100 个）。"""
     # 显式传递所有参数以兼容签名问题
-    result = call_tool_stdio("list_strings", {"offset": 0, "count": 100}, instance_port)
+    result = call_tool_http("list_strings", {"offset": 0, "count": 100}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot list strings: {result['error']}")
     return result.get("items", [])
@@ -770,7 +629,7 @@ def strings_cache(instance_port) -> List[Dict[str, Any]]:
 def globals_cache(instance_port) -> List[Dict[str, Any]]:
     """获取全局变量列表缓存。"""
     # 工具名为 "list_globals"（与 IDA API 一致）
-    result = call_tool_stdio("list_globals", {"offset": 0, "count": 1000}, instance_port)
+    result = call_tool_http("list_globals", {"offset": 0, "count": 1000}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot list globals: {result['error']}")
     return result.get("items", [])
@@ -779,7 +638,7 @@ def globals_cache(instance_port) -> List[Dict[str, Any]]:
 @pytest.fixture(scope="session")
 def entry_points_cache(instance_port) -> List[Dict[str, Any]]:
     """获取入口点缓存。"""
-    result = call_tool_stdio("get_entry_points", {}, instance_port)
+    result = call_tool_http("get_entry_points", {}, instance_port)
     if "error" in result:
         return []  # 入口点可能为空，不跳过测试
     return result.get("items", [])
@@ -788,7 +647,7 @@ def entry_points_cache(instance_port) -> List[Dict[str, Any]]:
 @pytest.fixture(scope="session")
 def local_types_cache(instance_port) -> List[Dict[str, Any]]:
     """获取本地类型缓存。"""
-    result = call_tool_stdio("list_local_types", {}, instance_port)
+    result = call_tool_http("list_local_types", {}, instance_port)
     if "error" in result:
         return []  # 类型可能为空，不跳过测试
     return result.get("items", [])

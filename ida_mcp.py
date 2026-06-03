@@ -9,8 +9,7 @@
     2. 自动选择空闲端口 (从 10000 开始向上扫描), MCP 路径固定为 ``/mcp``。
     3. 插件会确保独立单端口网关已启动, 默认通过 ``127.0.0.1:11338/internal`` 完成注册与转发。
     4. 后续实例向网关注册, 仅在内存维护实例列表, 不落盘 (避免文件锁 / 清理问题)。
-    5. 工具最小化: 仅保留 ``list_functions`` 与 ``instances`` (实例列表)。
-    6. 可配合独立进程型代理 ``ida_mcp_proxy.py`` 统一访问多个实例。
+    5. 可通过 gateway HTTP MCP proxy 统一访问多个实例。
 
 运行时架构
 --------------------
@@ -115,7 +114,6 @@ from ida_mcp.config import (
     get_ida_default_port,
     get_ida_host,
     is_auto_start_enabled,
-    is_stdio_enabled,
     is_http_enabled,
 )
 
@@ -250,21 +248,13 @@ class IDAMCPPlugin(idaapi.plugin_t if idaapi else object):  # type: ignore
             plugin_runtime._info("Server running -> toggling to stop.")
             plugin_runtime.stop_server()
             return
-        # 检查传输方式配置
-        stdio_enabled = is_stdio_enabled()
-        http_enabled = is_http_enabled()
-        if not stdio_enabled and not http_enabled:
+        # 检查 HTTP 传输配置
+        if not is_http_enabled():
             plugin_runtime._warn(
-                "Both stdio and HTTP modes are disabled in config.conf. No server started."
+                "HTTP mode is disabled in config.conf. No MCP server started."
             )
             return
-        # 显示启用的传输方式
-        modes = []
-        if stdio_enabled:
-            modes.append("stdio")
-        if http_enabled:
-            modes.append("HTTP")
-        plugin_runtime._info(f"Transport modes enabled: {', '.join(modes)}")
+        plugin_runtime._info("HTTP transport enabled.")
         host = get_ida_host()
         # 端口选择: 若 launcher 注入 IDA_MCP_PORT，则以其为起点继续向上探测
         # 必须使用实际监听地址进行端口探测

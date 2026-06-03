@@ -17,10 +17,8 @@ Usage:
     python test/test.py --resources     # Resources module (MCP resources)
     python test/test.py --lifecycle     # Lifecycle module (start/shutdown IDA)
 
-    # Transport modes:
-    python test/test.py --transport=stdio    # Test stdio mode only
-    python test/test.py --transport=http     # Test HTTP mode only
-    python test/test.py --transport=both     # Test both modes (default)
+    # Transport mode:
+    python test/test.py --transport=http     # Test HTTP mode (default)
 
     # Combined usage:
     python test/test.py --core --analysis    # Run core and analysis
@@ -30,7 +28,7 @@ Usage:
     pytest -m core                      # Run core module only
     pytest -m "core or analysis"        # Run core and analysis
     pytest -m "not debug"               # Exclude debug module
-    pytest --transport=http             # Test HTTP mode only
+    pytest --transport=http             # Test HTTP mode
     pytest test/test_core.py              # Run specified file
 """
 import sys
@@ -134,7 +132,7 @@ def run_tests(args: list | None = None):
     # Collect modules to run
     selected_modules: list[str] = []
     run_all = False
-    transport_mode = "both"  # Default to testing both modes
+    transport_mode = "http"
     remaining_args: list[str] = []
 
     if args:
@@ -143,6 +141,9 @@ def run_tests(args: list | None = None):
                 run_all = True
             elif arg.startswith("--transport="):
                 transport_mode = arg.split("=", 1)[1]
+                if transport_mode != "http":
+                    print("ERROR: only HTTP transport is supported. Use --transport=http.")
+                    return 1
             elif arg.startswith("--") and arg[2:] in MODULES:
                 selected_modules.append(arg[2:])
             else:
@@ -151,15 +152,10 @@ def run_tests(args: list | None = None):
     # 添加 transport 参数
     pytest_args.extend([f"--transport={transport_mode}"])
 
-    # Check HTTP proxy (if needed)
-    if transport_mode in ("http", "both"):
-        if not check_http_proxy():
-            print(f"WARNING: HTTP proxy not available at {GATEWAY_HOST}:{GATEWAY_PORT}")
-            if transport_mode == "http":
-                print("Please check config.conf and restart IDA plugin.")
-                return 1
-            else:
-                print("HTTP tests will be skipped.")
+    if not check_http_proxy():
+        print(f"WARNING: HTTP proxy not available at {GATEWAY_HOST}:{GATEWAY_PORT}")
+        print("Please check config.conf and restart IDA plugin.")
+        return 1
 
     # Build marker expression
     if selected_modules:

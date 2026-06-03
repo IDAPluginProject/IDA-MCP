@@ -2,7 +2,7 @@
 
 本文档基于当前独立 IDA-MCP 插件仓库实现整理，覆盖：
 
-- MCP 对外传输端点
+- MCP 对外 HTTP 端点
 - Gateway MCP proxy 工具
 - 直连 IDA instance 工具
 - `ida://` 资源
@@ -11,7 +11,7 @@
 仓库根目录包含 `ida_mcp.py`、`ida_mcp/`、`ida-plugin.json`、`requirements.txt`
 和 live-IDA 测试套件 `test/`。Sarma IDE 通过 Git submodule 消费本仓库。
 
-## 1. Transport Endpoints
+## 1. HTTP Endpoints
 
 | Surface | URL | Purpose |
 | --- | --- | --- |

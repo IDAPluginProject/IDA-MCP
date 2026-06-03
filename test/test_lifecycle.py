@@ -774,6 +774,12 @@ class TestLifecycleClose:
 class TestRegistryStartup:
     """网关启动与注册的回归测试。"""
 
+    def test_config_exposes_only_http_transport_switch(self):
+        assert not hasattr(config, "is_" + "stdio" + "_enabled")
+        fake_config = {"enable_http": True}
+        with patch("ida_mcp.config.load_config", return_value=fake_config):
+            assert config.is_http_enabled() is True
+
     def test_instance_startup_checks_gateway_before_listener_launch(self, monkeypatch):
         """实例启动必须先完成 gateway preflight，再启动 listener。"""
         events = []
@@ -1109,20 +1115,17 @@ class TestRegistryStartup:
 
     def test_init_and_register_retries_remote_registration(self):
         """远端注册瞬时失败时，应快速重试而不是静默丢失实例。"""
-        with patch("ida_mcp.config.is_stdio_enabled", return_value=True):
-            with patch("ida_mcp.config.is_http_enabled", return_value=False):
+        with patch("ida_mcp.registry.is_http_enabled", return_value=True):
+            with patch(
+                "ida_mcp.registry.ensure_registry_server", return_value=True
+            ) as mock_ensure:
                 with patch(
-                    "ida_mcp.registry.ensure_registry_server", return_value=True
-                ) as mock_ensure:
-                    with patch(
-                        "ida_mcp.registry._request_json",
-                        side_effect=[None, {"status": "ok"}],
-                    ) as mock_request:
-                        with patch("atexit.register"):
-                            with patch.object(
-                                registry, "_deregister_registered", False
-                            ):
-                                registry.init_and_register(10000, "input.bin", "db.i64")
+                    "ida_mcp.registry._request_json",
+                    side_effect=[None, {"status": "ok"}],
+                ) as mock_request:
+                    with patch("atexit.register"):
+                        with patch.object(registry, "_deregister_registered", False):
+                            registry.init_and_register(10000, "input.bin", "db.i64")
 
         assert mock_ensure.call_count == 1
         assert mock_request.call_count == 2
