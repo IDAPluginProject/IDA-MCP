@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import atexit
 import json
-import ntpath
 import os
-import shutil
 import signal
 import socket
 import subprocess
@@ -124,98 +122,49 @@ def _spawn_detached(args: List[str], cwd: str, log_path: Optional[str] = None) -
             log_handle.close()
 
 
-def _is_python_executable(path: str | None) -> bool:
-    if not path:
-        return False
-    path_mod = (
-        ntpath if ("\\" in path or (len(path) > 1 and path[1] == ":")) else os.path
-    )
-    name = path_mod.basename(path).lower()
-    return name.startswith("python")
+def _resolve_python_executable() -> str:
+    """Resolve the Python executable that IDAPython is running on.
 
-
-def _candidate_python_executables() -> List[str]:
+    In IDA 9.0+, IDAPython runs under the Python installation managed by
+    idaswitch.  ``sys.executable`` points to the IDA binary (``ida`` /
+    ``ida.exe``), not Python.  The actual interpreter lives under
+    ``sys.exec_prefix`` — the same Python that has all the packages
+    installed (including ``fastmcp``).
+    """
     candidates: List[str] = []
 
-    configured_python = get_ida_python()
-    if configured_python:
-        candidates.append(configured_python)
+    # 1. Explicit user config (highest priority)
+    configured = get_ida_python()
+    if configured:
+        candidates.append(configured)
 
-    for value in (
-        getattr(sys, "executable", None),
-        getattr(sys, "_base_executable", None),
-    ):
-        if value:
-            candidates.append(value)
-
-    def add_candidates_near_root(root: str | None) -> None:
-        if not root:
-            return
-        path_mod = (
-            ntpath if ("\\" in root or (len(root) > 1 and root[1] == ":")) else os.path
-        )
-        if path_mod is ntpath or os.name == "nt":
-            candidates.extend(
-                [
-                    path_mod.join(root, "python.exe"),
-                    path_mod.join(root, "ida-python", "python.exe"),
-                    path_mod.join(root, "python", "python.exe"),
-                    path_mod.join(root, "Scripts", "python.exe"),
-                ]
-            )
-        else:
-            candidates.extend(
-                [
-                    path_mod.join(root, "bin", "python3"),
-                    path_mod.join(root, "bin", "python"),
-                    path_mod.join(root, "ida-python", "python3"),
-                    path_mod.join(root, "ida-python", "python"),
-                    path_mod.join(root, "python", "bin", "python3"),
-                    path_mod.join(root, "python", "bin", "python"),
-                ]
-            )
-
-    current_exe = getattr(sys, "executable", "") or ""
-    path_mod = (
-        ntpath
-        if ("\\" in current_exe or (len(current_exe) > 1 and current_exe[1] == ":"))
-        else os.path
-    )
-    current_dir = path_mod.dirname(current_exe)
-    add_candidates_near_root(current_dir)
-
-    for value in (
-        getattr(sys, "prefix", None),
-        getattr(sys, "base_prefix", None),
+    # 2. Derive from IDAPython's own installation (idaswitch-managed)
+    #    sys.exec_prefix always points to the Python root IDA is using.
+    for prefix in (
         getattr(sys, "exec_prefix", None),
+        getattr(sys, "base_prefix", None),
+        getattr(sys, "prefix", None),
     ):
-        add_candidates_near_root(value)
+        if not prefix:
+            continue
+        if os.name == "nt":
+            candidates.append(os.path.join(prefix, "python.exe"))
+        else:
+            candidates.append(os.path.join(prefix, "bin", "python3"))
+            candidates.append(os.path.join(prefix, "bin", "python"))
 
-    for name in ["python.exe"] if os.name == "nt" else ["python3", "python"]:
-        resolved = shutil.which(name)
-        if resolved:
-            candidates.append(resolved)
-
-    seen = set()
-    ordered: List[str] = []
-    for candidate in candidates:
-        key = candidate.lower() if os.name == "nt" else candidate
+    seen: set[str] = set()
+    for path in candidates:
+        key = path.lower() if os.name == "nt" else path
         if key in seen:
             continue
         seen.add(key)
-        ordered.append(candidate)
-    return ordered
+        if os.path.isfile(path):
+            return path
 
-
-def _resolve_python_executable() -> str:
-    for candidate in _candidate_python_executables():
-        if not os.path.isfile(candidate):
-            continue
-        if _is_python_executable(candidate):
-            return candidate
     raise RuntimeError(
-        "No standalone Python interpreter found for gateway launch. "
-        "Configure ida_python to a python executable."
+        "No Python interpreter found for gateway launch.  "
+        "Set ida_python in config.conf to the Python executable used by IDA."
     )
 
 

@@ -313,19 +313,20 @@ class TestSegments:
         assert text["start_ea"] == complex_baseline["segments"][".text"]["start_ea"]
         assert text["end_ea"] == complex_baseline["segments"][".text"]["end_ea"]
 
-    def test_add_segment(self, tool_caller):
+    def test_add_segment(self, tool_caller, metadata):
         """Test adding a new segment."""
+        bitness = metadata.get("bits", 64)
         result = tool_caller("add_segment",
                             start_ea="0xDEAD0000",
                             size=0x1000,
                             name="test_seg",
                             seg_class="DATA",
                             perm="rw-",
-                            bitness=64)
+                            bitness=bitness)
         assert isinstance(result, dict)
-        if "error" not in result:
-            assert result["name"] == "test_seg"
-            assert result["size"] == 0x1000
+        assert "error" not in result, f"add_segment failed: {result}"
+        assert result["name"] == "test_seg"
+        assert result["size"] == 0x1000
 
     def test_add_segment_invalid_address(self, tool_caller):
         """Test adding segment with invalid address."""
@@ -343,17 +344,18 @@ class TestSegments:
                             name="zero_seg")
         assert "error" in result
 
-    def test_delete_segment(self, tool_caller):
+    def test_delete_segment(self, tool_caller, metadata):
         """Test deleting a segment."""
+        bitness = metadata.get("bits", 64)
         add_result = tool_caller("add_segment",
                                 start_ea="0xCAFE0000",
                                 size=0x1000,
                                 name="del_test",
                                 seg_class="DATA",
                                 perm="rw-",
-                                bitness=64)
+                                bitness=bitness)
         if "error" in add_result:
-            pytest.skip("could not create segment for deletion test")
+            pytest.skip(f"could not create segment for deletion test: {add_result}")
 
         result = tool_caller("delete_segment", address="0xCAFE0000")
         assert isinstance(result, dict)

@@ -1192,46 +1192,39 @@ class TestRegistryStartup:
         status = registry.get_registry_server_status()
         assert "already listening" in status.get("last_error", "")
 
-    def test_resolve_python_executable_prefers_ida_side_python(self):
-        """当 sys.executable 指向 ida64.exe 时，应改用同目录的 python.exe。"""
-        with patch.object(sys, "executable", r"D:\safetools\IDAPro-9.3\ida64.exe"):
-            with patch.object(
-                sys,
-                "_base_executable",
-                r"D:\safetools\IDAPro-9.3\ida64.exe",
-                create=True,
-            ):
-                with patch(
-                    "os.path.isfile",
-                    side_effect=lambda p: (
-                        p.lower() == r"d:\safetools\idapro-9.3\python.exe"
-                    ),
-                ):
-                    resolved = registry._resolve_python_executable()
-
-        assert resolved.lower() == r"d:\safetools\idapro-9.3\python.exe"
-
-    def test_resolve_python_executable_uses_sys_prefix_python(self):
-        """嵌入式环境下应尝试 sys.prefix 旁边的 python.exe。"""
-        embedded_exe = r"D:\safetools\IDAPro-9.3\ida64.exe"
-        embedded_prefix = r"D:\portable-python-3.11"
-
+    def test_resolve_python_executable_from_exec_prefix(self):
+        """应从 sys.exec_prefix 解析 idaswitch 管理的 Python。"""
         with patch("ida_mcp.registry.get_ida_python", return_value=None):
-            with patch.object(sys, "executable", embedded_exe):
-                with patch.object(sys, "_base_executable", embedded_exe, create=True):
-                    with patch.object(sys, "prefix", embedded_prefix):
-                        with patch.object(sys, "base_prefix", embedded_prefix):
-                            with patch.object(sys, "exec_prefix", embedded_prefix):
-                                with patch(
-                                    "os.path.isfile",
-                                    side_effect=lambda p: (
-                                        p.lower()
-                                        == r"d:\portable-python-3.11\python.exe"
-                                    ),
-                                ):
-                                    resolved = registry._resolve_python_executable()
+            with patch.object(sys, "exec_prefix", r"D:\portable-python-3.12"):
+                with patch.object(sys, "base_prefix", r"D:\portable-python-3.12"):
+                    with patch.object(sys, "prefix", r"D:\portable-python-3.12"):
+                        with patch(
+                            "os.path.isfile",
+                            side_effect=lambda p: (
+                                p.lower()
+                                == r"d:\portable-python-3.12\python.exe"
+                            ),
+                        ):
+                            resolved = registry._resolve_python_executable()
 
-        assert resolved.lower() == r"d:\portable-python-3.11\python.exe"
+        assert resolved.lower() == r"d:\portable-python-3.12\python.exe"
+
+    def test_resolve_python_executable_uses_sys_prefix_fallback(self):
+        """sys.exec_prefix 不存在时应回退到 sys.base_prefix / sys.prefix。"""
+        with patch("ida_mcp.registry.get_ida_python", return_value=None):
+            with patch.object(sys, "exec_prefix", r"D:\nonexistent"):
+                with patch.object(sys, "base_prefix", r"D:\nonexistent"):
+                    with patch.object(sys, "prefix", r"D:\portable-python-3.12"):
+                        with patch(
+                            "os.path.isfile",
+                            side_effect=lambda p: (
+                                p.lower()
+                                == r"d:\portable-python-3.12\python.exe"
+                            ),
+                        ):
+                            resolved = registry._resolve_python_executable()
+
+        assert resolved.lower() == r"d:\portable-python-3.12\python.exe"
 
     def test_ensure_http_proxy_running_uses_gateway_process(self):
         """HTTP proxy 应由已启动的网关进程内建拉起，而不是另起独立进程。"""

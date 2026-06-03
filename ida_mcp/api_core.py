@@ -644,7 +644,14 @@ def add_segment(
 
     ok = ida_segment.add_segm_ex(seg, name, seg_class, 0)
     if not ok:
-        return {"error": "add_segm_ex failed"}
+        import ida_kernwin
+        return {
+            "error": "add_segm_ex failed",
+            "detail": ida_kernwin.get_warning_message(ida_kernwin.SK_WARNING),
+            "start_ea": hex_addr(start),
+            "end_ea": hex_addr(end),
+            "bitness": bitness,
+        }
 
     return {
         "name": name,

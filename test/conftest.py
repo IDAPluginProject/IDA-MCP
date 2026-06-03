@@ -714,15 +714,15 @@ def tool_caller(request, instance_port):
         if not _is_http_proxy_available():
             pytest.skip("HTTP proxy not available")
 
-        def caller(tool_name: str, params: Optional[dict] = None) -> Any:
-            call_params = params or {}
+        def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
+            call_params = {**(params or {}), **kwargs}
             route_port = call_params.get("port")
             selected_port = route_port if isinstance(route_port, int) else instance_port
             return call_tool_http(tool_name, call_params, selected_port)
     else:
 
-        def caller(tool_name: str, params: Optional[dict] = None) -> Any:
-            call_params = params or {}
+        def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
+            call_params = {**(params or {}), **kwargs}
             route_port = call_params.get("port")
             selected_port = route_port if isinstance(route_port, int) else instance_port
             return call_tool_stdio(tool_name, call_params, selected_port)
