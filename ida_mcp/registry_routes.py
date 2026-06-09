@@ -24,15 +24,6 @@ DEBUG_MAX_LEN = 1000
 _uvicorn_server = None
 
 
-def _request_client_host(request: Request) -> str:
-    client = getattr(request, "client", None)
-    return str(getattr(client, "host", "") or "")
-
-
-def _is_loopback_host(host: str) -> bool:
-    return host in {"127.0.0.1", "::1", "localhost", ""}
-
-
 def _request_token(request: Request) -> str | None:
     authorization = request.headers.get("Authorization", "")
     if authorization.lower().startswith("bearer "):
@@ -49,14 +40,14 @@ def _request_token(request: Request) -> str | None:
 def is_gateway_request_authorized(request: Request) -> bool:
     """Authorize gateway access.
 
-    Local loopback access remains tokenless for the default desktop workflow.
-    Non-loopback access requires a configured shared token.
+    When gateway_token is configured, all requests must supply a matching
+    bearer token.  When no token is configured, all requests are allowed.
     """
     configured_token = get_gateway_token()
     supplied_token = _request_token(request)
     if configured_token:
         return supplied_token == configured_token
-    return _is_loopback_host(_request_client_host(request))
+    return True
 
 
 def _short(v: Any) -> str:
