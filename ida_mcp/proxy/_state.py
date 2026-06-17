@@ -26,6 +26,32 @@ def is_registered_port(port: int) -> bool:
     return any(i.get("port") == port for i in instances)
 
 
+def get_selected_port() -> Optional[int]:
+    """Return the gateway-wide selected instance port, if any."""
+    try:
+        from .. import instance_registry as registry
+
+        return registry._current_instance_port
+    except Exception:
+        return None
+
+
+def set_selected_port(port: int) -> None:
+    """Store the gateway-wide selected instance port."""
+    from .. import instance_registry as registry
+
+    with registry._lock:
+        registry._current_instance_port = port
+
+
+def clear_selected_port() -> None:
+    """Clear the gateway-wide selected instance port."""
+    from .. import instance_registry as registry
+
+    with registry._lock:
+        registry._current_instance_port = None
+
+
 def _health_rank(instance: dict) -> tuple[int, int, int]:
     health = str(instance.get("effective_state") or instance.get("health") or "")
     quarantined_until = float(instance.get("quarantined_until") or 0.0)
@@ -43,7 +69,8 @@ def choose_port(port: Optional[int] = None) -> Optional[int]:
     """Select target port.
 
     If port is explicitly provided, only validate its validity.
-    If not provided, auto-select using a stateless strategy:
+    If not provided, first use the gateway-selected instance set by
+    select_instance. If that selection is gone, auto-select using:
     1. prefer port 10000
     2. otherwise take the smallest registered port
     """
@@ -52,9 +79,16 @@ def choose_port(port: Optional[int] = None) -> Optional[int]:
             return None
         return port if is_registered_port(port) else None
 
+    selected_port = get_selected_port()
+    instances = get_instances()
+    if selected_port is not None:
+        if any(i.get("port") == selected_port for i in instances):
+            return selected_port
+        clear_selected_port()
+
     instances = [
         i
-        for i in get_instances()
+        for i in instances
         if is_valid_port(i.get("port")) and _is_auto_routable(i)
     ]
     if not instances:

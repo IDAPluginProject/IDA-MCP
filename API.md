@@ -130,7 +130,7 @@ proxy/control 面的包装错误常见格式：
 | --- | --- | --- | --- |
 | `check_connection` | none | `{}` | `{ok: bool, count: int}` |
 | `list_instances` | none | `{}` | `[{pid, port, input_file, idb, started, python, ...}]` |
-| `select_instance` | `port?: int` | `{"port": 10000}` | `{selected_port}` 或包装错误 |
+| `select_instance` | `port?: int` | `{"port": 10000}` | 设置后续未显式传 `port` 的默认实例，返回 `{selected_port}` 或包装错误 |
 
 ### 3.2 Lifecycle
 

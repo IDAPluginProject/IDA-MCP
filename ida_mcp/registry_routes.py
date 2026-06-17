@@ -98,6 +98,48 @@ async def _instances_handler(_: Request) -> JSONResponse:
         )
 
 
+async def _current_instance_handler(_: Request) -> JSONResponse:
+    with registry._lock:
+        current_port = registry._current_instance_port
+        if current_port is not None and not any(
+            entry.get("port") == current_port for entry in registry._instances
+        ):
+            registry._current_instance_port = None
+            current_port = None
+        return JSONResponse({"port": current_port})
+
+
+async def _select_instance_handler(request: Request) -> JSONResponse:
+    payload = await request.json() if request.method == "POST" else {}
+    requested_port = payload.get("port")
+
+    with registry._lock:
+        registry._reap_dead_instances()
+        registry._reap_stale_pending_instances()
+
+        if requested_port is not None:
+            if not isinstance(requested_port, int) or not 1 <= requested_port <= 65535:
+                return JSONResponse({"error": "invalid port"}, status_code=400)
+            if not any(entry.get("port") == requested_port for entry in registry._instances):
+                return JSONResponse({"error": "instance not found"}, status_code=404)
+            selected_port = requested_port
+        else:
+            candidates = [
+                entry
+                for entry in registry._instances
+                if isinstance(entry.get("port"), int)
+                and registry._auto_routable_instance(entry)
+            ]
+            if not candidates:
+                return JSONResponse({"error": "no instances"}, status_code=404)
+            selected_port = int(
+                sorted(candidates, key=registry._instance_sort_key)[0]["port"]
+            )
+
+        registry._current_instance_port = selected_port
+        return JSONResponse({"status": "ok", "selected_port": selected_port})
+
+
 async def _debug_get(_: Request) -> JSONResponse:
     return JSONResponse({"enabled": DEBUG_ENABLED})
 

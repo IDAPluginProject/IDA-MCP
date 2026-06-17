@@ -29,6 +29,7 @@ if __package__ in {None, ""}:
     import ida_mcp.registry_routes as registry_routes
     from ida_mcp.registry_routes import (
         _call_handler,
+        _current_instance_handler,
         _debug_get,
         _debug_post,
         _deregister_handler,
@@ -37,6 +38,7 @@ if __package__ in {None, ""}:
         _instances_handler,
         _proxy_status_handler,
         _register_handler,
+        _select_instance_handler,
         _shutdown_handler,
         _update_instance_handler,
         is_gateway_request_authorized,
@@ -53,6 +55,7 @@ else:
     from . import instance_registry, registry_routes
     from .registry_routes import (
         _call_handler,
+        _current_instance_handler,
         _debug_get,
         _debug_post,
         _deregister_handler,
@@ -61,6 +64,7 @@ else:
         _instances_handler,
         _proxy_status_handler,
         _register_handler,
+        _select_instance_handler,
         _shutdown_handler,
         _update_instance_handler,
         is_gateway_request_authorized,
@@ -94,6 +98,7 @@ def _build_internal_app() -> Starlette:
         routes=[
             Route("/healthz", _healthz, methods=["GET"]),
             Route("/instances", _instances_handler, methods=["GET"]),
+            Route("/current_instance", _current_instance_handler, methods=["GET"]),
             Route("/debug", _debug_get, methods=["GET"]),
             Route("/debug", _debug_post, methods=["POST"]),
             Route("/proxy_status", _proxy_status_handler, methods=["GET"]),
@@ -102,6 +107,7 @@ def _build_internal_app() -> Starlette:
             Route("/register", _register_handler, methods=["POST"]),
             Route("/update_instance", _update_instance_handler, methods=["POST"]),
             Route("/deregister", _deregister_handler, methods=["POST"]),
+            Route("/select_instance", _select_instance_handler, methods=["POST"]),
             Route("/call", _call_handler, methods=["POST"]),
         ]
     )

@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 from . import registry
 from .config import (
+    get_http_bind_host,
     get_gateway_internal_host,
     get_gateway_internal_port,
     get_http_connect_host,
@@ -35,10 +36,12 @@ def gateway_status_payload() -> dict[str, Any]:
         "instances": instances,
         "count": len(instances),
         "gateway_internal": {
+            "bind_host": get_http_bind_host(),
             "host": get_gateway_internal_host(),
             "port": get_gateway_internal_port(),
         },
         "http_proxy": {
+            "bind_host": get_http_bind_host(),
             "host": get_http_connect_host(),
             "port": get_http_port(),
             "path": get_http_path(),

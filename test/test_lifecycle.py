@@ -991,6 +991,35 @@ class TestRegistryStartup:
         assert instance["lifecycle_state"] == "analyzing"
         assert instance["effective_state"] == "analyzing"
 
+    def test_gateway_select_instance_updates_current_instance(
+        self, isolated_gateway_state
+    ):
+        app = registry_server._build_internal_app()
+
+        with TestClient(app) as client:
+            assert (
+                client.post(
+                    "/register",
+                    json={"pid": 1001, "port": 10001, "input_file": "init.exe"},
+                ).status_code
+                == 200
+            )
+            assert (
+                client.post(
+                    "/register",
+                    json={"pid": 1002, "port": 10002, "input_file": "target.exe"},
+                ).status_code
+                == 200
+            )
+
+            selected = client.post("/select_instance", json={"port": 10002})
+            current = client.get("/current_instance")
+
+        assert selected.status_code == 200
+        assert selected.json()["selected_port"] == 10002
+        assert current.status_code == 200
+        assert current.json()["port"] == 10002
+
     def test_choose_port_prefers_healthy_instance_over_quarantined_or_unhealthy(
         self, monkeypatch
     ):
@@ -1025,6 +1054,57 @@ class TestRegistryStartup:
         )
 
         assert proxy_state.choose_port() == 10000
+
+    def test_choose_port_prefers_selected_instance(self, monkeypatch):
+        monkeypatch.setattr(instance_registry, "_current_instance_port", 10002)
+        monkeypatch.setattr(
+            proxy_state,
+            "get_instances",
+            lambda: [
+                {"port": 10001, "health": instance_registry.INSTANCE_HEALTH_HEALTHY},
+                {"port": 10002, "health": instance_registry.INSTANCE_HEALTH_HEALTHY},
+            ],
+        )
+
+        assert proxy_state.choose_port() == 10002
+
+    def test_choose_port_clears_missing_selected_instance(self, monkeypatch):
+        monkeypatch.setattr(instance_registry, "_current_instance_port", 10002)
+        monkeypatch.setattr(
+            proxy_state,
+            "get_instances",
+            lambda: [
+                {"port": 10001, "health": instance_registry.INSTANCE_HEALTH_HEALTHY},
+            ],
+        )
+
+        assert proxy_state.choose_port() == 10001
+        assert instance_registry._current_instance_port is None
+
+    def test_forward_uses_selected_instance_when_port_omitted(self, monkeypatch):
+        seen: dict[str, object] = {}
+        monkeypatch.setattr(instance_registry, "_current_instance_port", 10002)
+        monkeypatch.setattr(
+            proxy_state,
+            "get_instances",
+            lambda: [
+                {"port": 10001, "health": instance_registry.INSTANCE_HEALTH_HEALTHY},
+                {"port": 10002, "health": instance_registry.INSTANCE_HEALTH_HEALTHY},
+            ],
+        )
+
+        def fake_http_post(path, body, timeout=None):
+            seen["path"] = path
+            seen["body"] = body
+            seen["timeout"] = timeout
+            return {"data": {"input_file": "selected.exe"}}
+
+        monkeypatch.setattr(proxy_state, "http_post", fake_http_post)
+
+        result = proxy_state.forward("get_metadata")
+
+        assert result == {"input_file": "selected.exe"}
+        assert seen["body"]["port"] == 10002
 
     def test_choose_port_excludes_non_ready_instances(self, monkeypatch):
         monkeypatch.setattr(

@@ -20,6 +20,7 @@ from ._state import (
     choose_port,
     get_instances,
     is_valid_port,
+    set_selected_port,
 )
 from . import register_tools
 
@@ -35,7 +36,7 @@ server = FastMCP(
 核心管理:
 - check_connection: 检查连接状态
 - list_instances: 列出所有 IDA 实例
-- select_instance: 无状态选择推荐实例端口
+- select_instance: 选择后续未显式指定 port 的默认 IDA 实例端口
 
 生命周期工具:
 - open_in_ida: 启动 IDA 并打开指定文件
@@ -88,13 +89,14 @@ def list_instances() -> list:
     return get_instances()
 
 
-@server.tool(description="Choose a recommended IDA instance port. If port omitted, auto-selects (prefer 10000). Returns {selected_port} or {error}.")
+@server.tool(description="Choose the default IDA instance port for subsequent calls. If port omitted, auto-selects (prefer 10000). Returns {selected_port} or {error}.")
 def select_instance(
     port: Annotated[Optional[int], Field(description="Target port; omit for auto-select")] = None
 ) -> dict:
-    """Select a recommended target instance without writing cross-client shared state."""
+    """Select the default target instance for subsequent proxied calls."""
     selected_port = choose_port(port)
     if selected_port is not None:
+        set_selected_port(selected_port)
         return {"selected_port": selected_port}
 
     instances = get_instances()

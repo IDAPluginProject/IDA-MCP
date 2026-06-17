@@ -64,17 +64,23 @@ def _print_gateway_status(payload: dict[str, Any]) -> None:
     gateway = payload.get("gateway", {})
     proxy = payload.get("proxy", {})
     gateway_internal = payload.get("gateway_internal", {})
+    gateway_host = gateway_internal.get("bind_host") or gateway_internal.get("host")
+    gateway_port = gateway_internal.get("port")
     print(
         f"Gateway: {'running' if gateway.get('alive') else 'stopped'} "
-        f"at {gateway_internal.get('host')}:{gateway_internal.get('port')}"
+        f"at {gateway_host}:{gateway_port}"
     )
     if gateway.get("log"):
         print(f"Gateway log: {_display_path(gateway['log'])}")
     if gateway.get("last_error"):
         print(f"Gateway error: {gateway['last_error']}")
+    http_proxy = payload["http_proxy"]
+    proxy_host = http_proxy.get("bind_host") or http_proxy.get("host")
+    proxy_port = http_proxy.get("port")
+    proxy_path = http_proxy.get("path")
     print(
         f"HTTP proxy: {'running' if proxy.get('alive') else 'stopped'} "
-        f"at {payload['http_proxy']['host']}:{payload['http_proxy']['port']}{payload['http_proxy']['path']}"
+        f"at {proxy_host}:{proxy_port}{proxy_path}"
     )
     if proxy.get("last_error"):
         print(f"HTTP proxy error: {proxy['last_error']}")
