@@ -2,12 +2,8 @@
 
 IDA-MCP is an IDA Pro plugin that exposes IDA analysis, database modification,
 debugger, and lifecycle operations through MCP. Each IDA instance runs a local
-FastMCP HTTP server, and an optional standalone gateway provides a stable
+FastMCP HTTP server, and a standalone gateway provides a stable
 multi-instance MCP endpoint.
-
-This repository is now the standalone plugin repository. The desktop IDE and
-application shell live in the separate `Sarma` repository and consume this
-project as a Git submodule.
 
 ## Layout
 
@@ -16,6 +12,7 @@ IDA-MCP/
 ├── ida_mcp.py          # IDA plugin entry point, exposes PLUGIN_ENTRY()
 ├── ida-plugin.json     # IDA plugin metadata
 ├── ida_mcp/            # plugin package, gateway, proxy, tools, resources
+├── install.py          # interactive installer
 ├── test/               # live-IDA pytest suite
 ├── API.md              # MCP, tool, resource, and internal HTTP contract
 ├── project.md          # repository map and boundaries
@@ -37,8 +34,23 @@ Requirements:
 
 - Python > 3.11
 
-Copy `ida_mcp.py` and the `ida_mcp/` directory into IDA's plugin directory, then
-install dependencies into IDA's Python environment:
+Run the interactive installer from the repository root:
+
+```bash
+python install.py
+```
+
+The installer performs the full setup flow:
+
+1. Locate the IDA installation directory.
+2. Locate the IDAPython interpreter used by that IDA installation.
+3. Optionally install `requirements.txt` into IDA's Python environment.
+4. Copy `ida_mcp.py`, `ida-plugin.json`, and the `ida_mcp/` package into IDA's `plugins/` directory.
+5. Review and write `ida_mcp/config.conf`.
+
+For manual installation, copy `ida_mcp.py`, `ida-plugin.json`, and the
+`ida_mcp/` directory into IDA's plugin directory, then install dependencies into
+IDA's Python environment:
 
 ```bash
 <ida_python> -m pip install -r requirements.txt
