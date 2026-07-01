@@ -35,6 +35,19 @@ def normalize_error_payload(
                 else:
                     payload["error"]["details"] = details
             return payload
+        legacy_code = error.get("error_code")
+        legacy_message = error.get("error")
+        if isinstance(legacy_code, str) and isinstance(legacy_message, str):
+            merged_details: dict[str, Any] = {}
+            existing_details = error.get("error_details")
+            if isinstance(existing_details, dict):
+                merged_details.update(existing_details)
+            merged_details.update(details)
+            return error_payload(
+                legacy_code,
+                legacy_message,
+                **merged_details,
+            )
 
     message = default_message if default_message is not None else str(error)
     return error_payload(default_code, message, raw_error=error, **details)

@@ -171,6 +171,35 @@ class TestGlobals:
 class TestStrings:
     """String tests."""
 
+    def test_list_strings_regex_filter_unit(self, monkeypatch):
+        """Unit guard for regex content filtering."""
+        monkeypatch.setattr(
+            api_core,
+            "_get_strings_cache",
+            lambda: [
+                (0x1000, 6, 0, "alpha1"),
+                (0x1008, 5, 0, "alpha"),
+                (0x1010, 5, 0, "bravo2"),
+            ],
+        )
+
+        result = api_core.list_strings.__wrapped__(
+            pattern=r"^alpha[0-9]+$",
+            regex=True,
+        )
+
+        assert "error" not in result
+        assert [item["text"] for item in result["items"]] == ["alpha1"]
+
+    def test_list_strings_invalid_regex_unit(self, monkeypatch):
+        """Unit guard for invalid regex reporting."""
+        monkeypatch.setattr(api_core, "_get_strings_cache", lambda: [])
+
+        result = api_core.list_strings.__wrapped__(pattern="[", regex=True)
+
+        assert "error" in result
+        assert "invalid regex" in result["error"]
+
     def test_list_strings_default(self, tool_caller):
         """Test listing strings with default parameters."""
         result = tool_caller("list_strings", {"offset": 0, "count": 100})
@@ -194,6 +223,31 @@ class TestStrings:
             if text.startswith("IDA_MCP_COMPLEX_SENTINEL")
         }
         assert expected.issubset(texts)
+
+    def test_list_strings_regex(self, tool_caller):
+        """Test regex content filtering."""
+        result = tool_caller(
+            "list_strings",
+            {
+                "offset": 0,
+                "count": 100,
+                "pattern": r"^IDA_MCP_COMPLEX_SENTINEL_(ENTRY|RECT)$",
+                "regex": True,
+            },
+        )
+        assert "error" not in result
+        texts = {item["text"] for item in result.get("items", [])}
+        expected = {
+            "IDA_MCP_COMPLEX_SENTINEL_ENTRY",
+            "IDA_MCP_COMPLEX_SENTINEL_RECT",
+        }
+        assert expected.issubset(texts)
+
+    def test_list_strings_invalid_regex(self, tool_caller):
+        """Test invalid regex reporting."""
+        result = tool_caller("list_strings", {"pattern": "[", "regex": True})
+        assert "error" in result
+        assert "invalid regex" in result["error"]
 
 
 class TestLocalTypes:

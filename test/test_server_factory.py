@@ -190,7 +190,7 @@ def test_tool_metadata_tracks_unsafe_and_execution_mode():
     assert py_eval_spec.unsafe is True
     assert apply_patch_spec.unsafe is True
     assert py_eval_spec.execution_mode == "write"
-    assert apply_patch_spec.execution_mode == "read"
+    assert apply_patch_spec.execution_mode == "write"
     assert dbg_regs_spec.unsafe is True
 
 

@@ -13,7 +13,7 @@ HTTP proxy config:
     - http_host: gateway bind address (default 127.0.0.1)
     - http_port: gateway listen port (default 11338)
     - http_path: MCP endpoint path (default /mcp)
-    - gateway_token: optional shared bearer token for non-loopback gateway access
+    - gateway_token: optional shared bearer token; empty disables token checks
 
 IDA instance config:
     - ida_default_port: starting port for IDA instance MCP (default 10000)

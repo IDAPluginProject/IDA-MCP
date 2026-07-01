@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import re
 import stat
 from typing import Annotated, Optional, List
 
@@ -211,8 +212,8 @@ def list_functions(
                 "start_ea": hex_addr(f.start_ea),
                 "end_ea": hex_addr(f.end_ea)
             })
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": f"list_functions failed: {e}"}
     
     functions.sort(key=lambda x: int(x['start_ea'], 16))
     
@@ -262,8 +263,8 @@ def list_globals(
                 "ea": hex_addr(ea),
                 "size": item_size,
             })
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": f"list_globals failed: {e}"}
     
     entries.sort(key=lambda x: int(x['ea'], 16))
     
@@ -283,6 +284,7 @@ def list_strings(
     offset: Annotated[int, "Pagination offset (>=0)"] = 0,
     count: Annotated[int, "Number of items (1..1000)"] = 100,
     pattern: Annotated[Optional[str], "Optional content filter"] = None,
+    regex: Annotated[bool, "Treat pattern as a regular expression"] = False,
 ) -> dict:
     """List extracted strings with pagination."""
     if offset < 0:
@@ -291,21 +293,24 @@ def list_strings(
         return {"error": "count must be > 0"}
     if count > 1000:
         return {"error": "count too large (max 1000)"}
-    
-    substr = (pattern or '').lower()
+
     cached = _get_strings_cache()
-    
-    if substr:
-        items = [
-            {'ea': ea, 'length': length, 'type': stype, 'text': text}
-            for ea, length, stype, text in cached
-            if substr in text.lower()
-        ]
-    else:
-        items = [
-            {'ea': ea, 'length': length, 'type': stype, 'text': text}
-            for ea, length, stype, text in cached
-        ]
+
+    items = [
+        {'ea': ea, 'length': length, 'type': stype, 'text': text}
+        for ea, length, stype, text in cached
+    ]
+
+    if pattern:
+        if regex:
+            try:
+                rx = re.compile(pattern, re.IGNORECASE)
+            except re.error as e:
+                return {"error": f"invalid regex: {e}"}
+            items = [item for item in items if rx.search(item["text"])]
+        else:
+            substr = pattern.lower()
+            items = [item for item in items if substr in item["text"].lower()]
     
     return paginate(items, offset, count)  # type: ignore
 
@@ -500,8 +505,8 @@ def list_imports(
             if current_module is None:
                 current_module = f"module_{i}"
             idaapi.enum_import_names(i, import_callback)
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": f"list_imports failed: {e}"}
     
     items.sort(key=lambda x: (x.get('module', ''), x.get('name', '')))
     
@@ -545,8 +550,8 @@ def list_exports(
                     "name": name,
                     "ordinal": ordinal if ordinal else None,
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": f"list_exports failed: {e}"}
     
     items.sort(key=lambda x: int(x['ea'], 16))
     
@@ -591,8 +596,8 @@ def list_segments() -> dict:
                 "class": seg_class,
                 "bitness": s.bitness * 16 + 16,  # 0=16bit, 1=32bit, 2=64bit
             })
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": f"list_segments failed: {e}"}
     
     return {"total": len(items), "items": items}
 

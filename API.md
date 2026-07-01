@@ -21,7 +21,7 @@
 
 说明：
 
-- `http_host` 默认绑定 `127.0.0.1`；若绑定到 `0.0.0.0`，非 loopback 请求需配置并提供 `gateway_token`
+- `http_host` 控制 gateway 监听地址；`gateway_token` 为空时不做 token 校验，配置后所有请求都需提供匹配 token
 - Gateway MCP proxy 的默认 URL 由 `config.conf` 中的 `http_host/http_port/http_path` 决定
 - Direct instance 端点固定为 `http://127.0.0.1:<instance_port>/mcp/`
 
@@ -169,7 +169,7 @@ proxy/control 面的包装错误常见格式：
 | `get_metadata` | none | `{}` | `{input_file, arch, bits, endian, hash}` |
 | `list_functions` | `offset?: int`, `count?: int`, `pattern?: str` | `{"offset":0,"count":20,"pattern":"sub_*"}` | 分页结果；`items` 为 `[{name, start_ea, end_ea}]` |
 | `list_globals` | `offset?: int`, `count?: int`, `pattern?: str` | `{"pattern":"g_*"}` | 分页结果；`items` 为 `[{name, ea, size}]` |
-| `list_strings` | `offset?: int`, `count?: int`, `pattern?: str` | `{"pattern":"http"}` | 分页结果；`items` 为 `[{ea, length, type, text}]` |
+| `list_strings` | `offset?: int`, `count?: int`, `pattern?: str`, `regex?: bool` | `{"pattern":"^http","regex":true}` | 分页结果；默认对子串做大小写不敏感匹配；`regex=true` 时将 `pattern` 作为正则；`items` 为 `[{ea, length, type, text}]` |
 | `list_local_types` | none | `{}` | `{total, items:[{ordinal, name, decl}]}` |
 | `get_entry_points` | none | `{}` | `{total, items:[{ordinal, ea, name}]}` |
 | `convert_number` | `text: str`, `size?: int` | `{"text":"401000h","size":64}` | `{input, size, value, hex, dec, unsigned, signed, bin, bytes_le, bytes_be}` |
@@ -383,13 +383,13 @@ Base URL:
 http://127.0.0.1:11338/internal
 ```
 
-默认 gateway 仅监听 `127.0.0.1`。如果配置为非本机监听，非 loopback 请求必须携带共享 token：
+`http_host` 控制 gateway 监听地址。`gateway_token` 为空时不做 token 校验；配置后请求必须携带共享 token：
 
 ```http
 Authorization: Bearer <gateway_token>
 ```
 
-也支持 `X-IDA-MCP-Token: <gateway_token>`。`gateway_token` 为空时只允许 loopback 客户端访问。
+也支持 `X-IDA-MCP-Token: <gateway_token>`。是否允许非本机访问由 `http_host`、系统防火墙和网络环境决定，不由空 token 自动限制。
 
 | Method | Path | Request Body | Expected Response |
 | --- | --- | --- | --- |

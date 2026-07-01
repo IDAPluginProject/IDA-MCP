@@ -28,28 +28,41 @@ def is_registered_port(port: int) -> bool:
 
 def get_selected_port() -> Optional[int]:
     """Return the gateway-wide selected instance port, if any."""
+    data = http_get("/current_instance")
+    if isinstance(data, dict) and is_valid_port(data.get("port")):
+        return int(data["port"])
     try:
         from .. import instance_registry as registry
 
-        return registry._current_instance_port
+        if is_valid_port(registry._current_instance_port):
+            return int(registry._current_instance_port)
     except Exception:
-        return None
+        pass
+    return None
 
 
 def set_selected_port(port: int) -> None:
     """Store the gateway-wide selected instance port."""
-    from .. import instance_registry as registry
+    http_post("/select_instance", {"port": int(port)})
+    try:
+        from .. import instance_registry as registry
 
-    with registry._lock:
-        registry._current_instance_port = port
+        with registry._lock:
+            registry._current_instance_port = int(port)
+    except Exception:
+        pass
 
 
 def clear_selected_port() -> None:
     """Clear the gateway-wide selected instance port."""
-    from .. import instance_registry as registry
+    http_post("/select_instance", {"clear": True})
+    try:
+        from .. import instance_registry as registry
 
-    with registry._lock:
-        registry._current_instance_port = None
+        with registry._lock:
+            registry._current_instance_port = None
+    except Exception:
+        pass
 
 
 def _health_rank(instance: dict) -> tuple[int, int, int]:

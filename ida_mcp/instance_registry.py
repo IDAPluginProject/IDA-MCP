@@ -244,6 +244,8 @@ def _preflight_instance_route(entry: Dict[str, Any]) -> Optional[JSONResponse]:
         return JSONResponse(
             {
                 "error": f"Instance on port {port} is not ready yet ({effective_state})",
+                "error_code": "instance_not_ready",
+                "error_details": {"port": port},
                 "effective_state": effective_state,
             },
             status_code=503,
@@ -252,6 +254,8 @@ def _preflight_instance_route(entry: Dict[str, Any]) -> Optional[JSONResponse]:
         return JSONResponse(
             {
                 "error": f"Instance on port {port} is unresponsive",
+                "error_code": "instance_unresponsive",
+                "error_details": {"port": port},
                 "effective_state": effective_state,
                 "main_thread_stale": bool(snapshot.get("main_thread_stale")),
             },

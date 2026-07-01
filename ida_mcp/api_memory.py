@@ -15,11 +15,9 @@ from .utils import parse_address, normalize_list_input, hex_addr
 
 # IDA module imports
 try:
-    import idaapi  # type: ignore
     import ida_bytes  # type: ignore
     import ida_ida  # type: ignore
 except ImportError:
-    idaapi = None
     ida_bytes = None
     ida_ida = None
 
@@ -39,6 +37,8 @@ def get_bytes(
         return [{"error": "size must be > 0"}]
     if size > 4096:
         return [{"error": "size too large (max 4096)"}]
+    if ida_bytes is None:
+        return [{"error": "ida_bytes unavailable"}]
     
     queries = normalize_list_input(addr)
     results = []
@@ -51,7 +51,7 @@ def get_bytes(
         
         address = parsed["value"]
         try:
-            data = idaapi.get_bytes(address, size)
+            data = ida_bytes.get_bytes(address, size)
             if data is None:
                 results.append({"error": "failed to read", "query": query, "address": hex_addr(address)})
                 continue
@@ -91,6 +91,8 @@ def _read_scalar(addr: Union[int, str], width: int, signed: bool = False) -> Lis
     """Internal: read scalar integer."""
     if width not in (1, 2, 4, 8):
         return [{"error": "width must be one of 1, 2, 4, or 8", "width": width}]
+    if ida_bytes is None:
+        return [{"error": "ida_bytes unavailable"}]
 
     queries = normalize_list_input(addr)
     results = []
@@ -103,7 +105,7 @@ def _read_scalar(addr: Union[int, str], width: int, signed: bool = False) -> Lis
         
         address = parsed["value"]
         try:
-            data = idaapi.get_bytes(address, width)
+            data = ida_bytes.get_bytes(address, width)
             if data is None:
                 results.append({"error": "failed to read", "query": query, "address": hex_addr(address)})
                 continue
@@ -147,6 +149,8 @@ def get_string(
         return [{"error": "max_len must be > 0"}]
     if max_len > 4096:
         max_len = 4096
+    if ida_bytes is None:
+        return [{"error": "ida_bytes unavailable"}]
     
     queries = normalize_list_input(addr)
     results = []
@@ -160,7 +164,7 @@ def get_string(
         address = parsed["value"]
         try:
             # read bytes until null terminator
-            data = idaapi.get_bytes(address, max_len)
+            data = ida_bytes.get_bytes(address, max_len)
             if data is None:
                 results.append({"error": "failed to read", "query": query, "address": hex_addr(address)})
                 continue

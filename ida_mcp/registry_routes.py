@@ -77,6 +77,21 @@ def _now() -> float:
     return time.time()
 
 
+def _error_response(
+    code: str,
+    message: str,
+    status_code: int,
+    **details: Any,
+) -> JSONResponse:
+    payload: dict[str, Any] = {
+        "error": message,
+        "error_code": code,
+    }
+    if details:
+        payload["error_details"] = details
+    return JSONResponse(payload, status_code=status_code)
+
+
 async def _healthz(_: Request) -> JSONResponse:
     return JSONResponse(
         {
@@ -111,6 +126,11 @@ async def _current_instance_handler(_: Request) -> JSONResponse:
 
 async def _select_instance_handler(request: Request) -> JSONResponse:
     payload = await request.json() if request.method == "POST" else {}
+    if payload.get("clear"):
+        with registry._lock:
+            registry._current_instance_port = None
+        return JSONResponse({"status": "ok", "selected_port": None})
+
     requested_port = payload.get("port")
 
     with registry._lock:
@@ -119,9 +139,9 @@ async def _select_instance_handler(request: Request) -> JSONResponse:
 
         if requested_port is not None:
             if not isinstance(requested_port, int) or not 1 <= requested_port <= 65535:
-                return JSONResponse({"error": "invalid port"}, status_code=400)
+                return _error_response("invalid_port", "invalid port", 400)
             if not any(entry.get("port") == requested_port for entry in registry._instances):
-                return JSONResponse({"error": "instance not found"}, status_code=404)
+                return _error_response("instance_not_found", "instance not found", 404)
             selected_port = requested_port
         else:
             candidates = [
@@ -131,7 +151,7 @@ async def _select_instance_handler(request: Request) -> JSONResponse:
                 and registry._auto_routable_instance(entry)
             ]
             if not candidates:
-                return JSONResponse({"error": "no instances"}, status_code=404)
+                return _error_response("no_instances", "no instances", 404)
             selected_port = int(
                 sorted(candidates, key=registry._instance_sort_key)[0]["port"]
             )
@@ -146,7 +166,7 @@ async def _debug_get(_: Request) -> JSONResponse:
 
 async def _debug_post(request: Request) -> JSONResponse:
     if not is_gateway_request_authorized(request):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return _error_response("unauthorized", "unauthorized", 401)
     payload = await request.json()
     enable = bool(
         payload.get("enable") if "enable" in payload else payload.get("enabled", False)
@@ -178,12 +198,11 @@ async def _shutdown_handler(request: Request) -> JSONResponse:
     with registry._lock:
         instance_count = len(registry._instances)
     if instance_count > 0 and not force:
-        return JSONResponse(
-            {
-                "error": "Gateway shutdown refused while IDA instances are still registered",
-                "instance_count": instance_count,
-            },
-            status_code=409,
+        return _error_response(
+            "instances_registered",
+            "Gateway shutdown refused while IDA instances are still registered",
+            409,
+            instance_count=instance_count,
         )
 
     threading.Timer(0.05, _signal_gateway_shutdown).start()
@@ -200,7 +219,7 @@ async def _shutdown_handler(request: Request) -> JSONResponse:
 async def _register_handler(request: Request) -> JSONResponse:
     payload = await request.json()
     if not {"pid", "port"}.issubset(payload):
-        return JSONResponse({"error": "missing fields"}, status_code=400)
+        return _error_response("missing_fields", "missing fields", 400)
     with registry._lock:
         pid = payload["pid"]
         payload["last_seen_at"] = _now()
@@ -220,7 +239,7 @@ async def _update_instance_handler(request: Request) -> JSONResponse:
     pid = payload.get("pid")
     port = payload.get("port")
     if pid is None and port is None:
-        return JSONResponse({"error": "missing pid or port"}, status_code=400)
+        return _error_response("missing_target", "missing pid or port", 400)
 
     with registry._lock:
         target = None
@@ -232,7 +251,7 @@ async def _update_instance_handler(request: Request) -> JSONResponse:
                 target = entry
                 break
         if target is None:
-            return JSONResponse({"error": "instance not found"}, status_code=404)
+            return _error_response("instance_not_found", "instance not found", 404)
         for key, value in payload.items():
             if key in {"pid", "port"}:
                 continue
@@ -245,7 +264,7 @@ async def _deregister_handler(request: Request) -> JSONResponse:
     payload = await request.json()
     pid = payload.get("pid")
     if pid is None:
-        return JSONResponse({"error": "missing pid"}, status_code=400)
+        return _error_response("missing_pid", "missing pid", 400)
     with registry._lock:
         remaining = [e for e in registry._instances if e.get("pid") != pid]
         if registry._current_instance_port and not any(
@@ -265,7 +284,7 @@ async def _call_handler(request: Request) -> JSONResponse:
     tool = payload.get("tool")
     params = payload.get("params") or {}
     if not tool:
-        return JSONResponse({"error": "missing tool"}, status_code=400)
+        return _error_response("missing_tool", "missing tool", 400)
 
     with registry._lock:
         registry._reap_dead_instances()
@@ -282,7 +301,7 @@ async def _call_handler(request: Request) -> JSONResponse:
                     target = entry
                     break
     if target is None:
-        return JSONResponse({"error": "instance not found"}, status_code=404)
+        return _error_response("instance_not_found", "instance not found", 404)
 
     preflight = registry._preflight_instance_route(target)
     if preflight is not None:
@@ -290,7 +309,7 @@ async def _call_handler(request: Request) -> JSONResponse:
 
     port = target.get("port")
     if not isinstance(port, int):
-        return JSONResponse({"error": "bad target port"}, status_code=500)
+        return _error_response("bad_target_port", "bad target port", 500)
 
     req_timeout = payload.get("timeout")
     try:
@@ -314,7 +333,7 @@ async def _call_handler(request: Request) -> JSONResponse:
             "connect",
             quarantine=True,
         )
-        return JSONResponse({"error": err_detail}, status_code=503)
+        return _error_response("instance_unreachable", err_detail, 503, port=port)
 
     with registry._CALL_LOCKS_GUARD:
         if port not in registry._call_locks:
@@ -330,7 +349,7 @@ async def _call_handler(request: Request) -> JSONResponse:
         registry._mark_instance_failure(
             port, registry.INSTANCE_HEALTH_DEGRADED, err_detail, "lock"
         )
-        return JSONResponse({"error": err_detail}, status_code=503)
+        return _error_response("call_lock_timeout", err_detail, 503, port=port)
 
     try:
         from fastmcp import Client  # type: ignore
@@ -377,8 +396,12 @@ async def _call_handler(request: Request) -> JSONResponse:
             error=err_detail,
             traceback=traceback.format_exc(),
         )
-        return JSONResponse(
-            {"error": f"call failed: {err_detail}"}, status_code=status_code
+        return _error_response(
+            f"tool_call_{error_kind}",
+            f"call failed: {err_detail}",
+            status_code,
+            tool=tool,
+            port=port,
         )
     finally:
         if acquired:

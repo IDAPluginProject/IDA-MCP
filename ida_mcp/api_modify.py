@@ -513,7 +513,7 @@ def _collect_patched_file_bytes(input_size: int) -> tuple[list[dict], list[dict]
 
 @unsafe
 @tool
-@idaread
+@idawrite
 def apply_patch(
     output_path: Annotated[
         Optional[str],
