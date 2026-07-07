@@ -21,7 +21,7 @@
 
 说明：
 
-- `http_host` 控制 gateway 监听地址；`gateway_token` 为空时不做 token 校验，配置后所有请求都需提供匹配 token
+- `http_host` 控制 gateway 监听地址；所有 gateway 请求都必须携带匹配的 `gateway_token`，为空时网关拒绝请求
 - Gateway MCP proxy 的默认 URL 由 `config.conf` 中的 `http_host/http_port/http_path` 决定
 - Direct instance 端点固定为 `http://127.0.0.1:<instance_port>/mcp/`
 
@@ -383,13 +383,13 @@ Base URL:
 http://127.0.0.1:11338/internal
 ```
 
-`http_host` 控制 gateway 监听地址。`gateway_token` 为空时不做 token 校验；配置后请求必须携带共享 token：
+`http_host` 控制 gateway 监听地址。请求必须携带共享 token；`gateway_token` 为空时网关拒绝请求：
 
 ```http
 Authorization: Bearer <gateway_token>
 ```
 
-也支持 `X-IDA-MCP-Token: <gateway_token>`。是否允许非本机访问由 `http_host`、系统防火墙和网络环境决定，不由空 token 自动限制。
+也支持 `X-IDA-MCP-Token: <gateway_token>`。是否允许非本机访问由 `http_host`、系统防火墙和网络环境决定；非本机访问应使用随机高强度 token，并保持 `enable_unsafe=false`，除非确实需要高危工具。
 
 | Method | Path | Request Body | Expected Response |
 | --- | --- | --- | --- |

@@ -23,6 +23,7 @@ from .config import (
     get_gateway_internal_port,
     get_gateway_internal_url,
     get_gateway_auth_headers,
+    get_gateway_token,
     get_http_path,
     get_http_port,
     get_request_timeout,
@@ -177,6 +178,15 @@ def _repo_root() -> str:
 
 def ensure_registry_server(startup_timeout: float = 3.0) -> bool:
     """Ensure the standalone single-port gateway is reachable."""
+    if not get_gateway_token():
+        _set_launch_status(
+            "registry_server",
+            requested=False,
+            alive=False,
+            last_error="gateway_token is required in config.conf",
+        )
+        return False
+
     if _gateway_ready():
         return True
 

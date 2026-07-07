@@ -13,7 +13,7 @@ HTTP proxy config:
     - http_host: gateway bind address (default 127.0.0.1)
     - http_port: gateway listen port (default 11338)
     - http_path: MCP endpoint path (default /mcp)
-    - gateway_token: optional shared bearer token; empty disables token checks
+    - gateway_token: required shared bearer token; empty fails closed
 
 IDA instance config:
     - ida_default_port: starting port for IDA instance MCP (default 10000)
@@ -80,6 +80,17 @@ def _coerce_bool(value: Any, default: bool) -> bool:
             return parsed
         if isinstance(parsed, (int, float)):
             return bool(parsed)
+    return default
+
+
+def _coerce_int_range(value: Any, default: int, minimum: int, maximum: int) -> int:
+    """Coerce an integer config value and clamp invalid values to default."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if minimum <= parsed <= maximum:
+        return parsed
     return default
 
 
@@ -214,7 +225,7 @@ def get_gateway_internal_url() -> str:
 def get_http_port() -> int:
     """Get the HTTP proxy listen port."""
     config = load_config()
-    return int(config.get("http_port", 11338))
+    return _coerce_int_range(config.get("http_port", 11338), 11338, 1, 65535)
 
 
 def get_http_path() -> str:
@@ -232,7 +243,11 @@ def get_http_url() -> str:
 
 
 def get_gateway_token() -> str | None:
-    """Get the optional shared gateway bearer token."""
+    """Get the shared gateway bearer token.
+
+    The gateway refuses requests when this is unset.  Installers should write a
+    random non-empty token into config.conf.
+    """
     config = load_config()
     token = config.get("gateway_token")
     if isinstance(token, str):
@@ -268,7 +283,7 @@ def get_ida_host() -> str:
 def get_ida_default_port() -> int:
     """Get the starting port for IDA instance MCP."""
     config = load_config()
-    return int(config.get("ida_default_port", 10000))
+    return _coerce_int_range(config.get("ida_default_port", 10000), 10000, 1, 65535)
 
 
 def get_ida_path() -> str | None:
@@ -320,7 +335,7 @@ def is_open_in_ida_autonomous_enabled() -> bool:
 def get_request_timeout() -> int:
     """Get the request timeout in seconds."""
     config = load_config()
-    return int(config.get("request_timeout", 30))
+    return _coerce_int_range(config.get("request_timeout", 30), 30, 1, 3600)
 
 
 def is_debug_enabled() -> bool:

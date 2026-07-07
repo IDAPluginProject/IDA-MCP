@@ -47,6 +47,9 @@ try:
 except ImportError:
     ida_ua = None
 
+_MAX_MODELING_RANGE = 1024 * 1024
+_MAX_DATA_COUNT = 4096
+
 
 def _error(message: str, **extra: Any) -> dict:
     result = {"error": message}
@@ -494,6 +497,8 @@ def undefine_items(
     """Undefine items in a range."""
     if size <= 0:
         return _error("size must be greater than zero", size=size)
+    if size > _MAX_MODELING_RANGE:
+        return _error("size too large", size=size, max_size=_MAX_MODELING_RANGE)
 
     ea, err = _resolve_address(address, "address")
     if err:
@@ -537,6 +542,8 @@ def make_data(
     """Create typed data items at an address."""
     if count <= 0:
         return _error("count must be greater than zero", count=count)
+    if count > _MAX_DATA_COUNT:
+        return _error("count too large", count=count, max_count=_MAX_DATA_COUNT)
 
     ea, err = _resolve_address(address, "address")
     if err:
@@ -600,6 +607,8 @@ def make_string(
     """Create a string literal at an address."""
     if length is not None and length < 0:
         return _error("length must be zero or greater", length=length)
+    if length is not None and length > _MAX_MODELING_RANGE:
+        return _error("length too large", length=length, max_length=_MAX_MODELING_RANGE)
 
     if ida_bytes is None:
         return _error("IDA byte APIs unavailable")

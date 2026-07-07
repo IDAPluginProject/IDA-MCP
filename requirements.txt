@@ -1,3 +1,6 @@
 fastmcp
+starlette
+uvicorn
+pydantic
 pytest
 colorama

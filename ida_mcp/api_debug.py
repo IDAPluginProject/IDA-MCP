@@ -34,6 +34,10 @@ except ImportError:
     ida_funcs = None
     ida_dbg = None
 
+_MAX_DEBUG_REGIONS = 64
+_MAX_DEBUG_MEMORY_BYTES = 4096
+_MAX_DEBUG_TOTAL_BYTES = 1024 * 1024
+
 
 def _breakpoint_exists(address: int) -> bool:
     try:
@@ -833,9 +837,18 @@ def dbg_read_mem(
     except Exception:
         return [{"error": "cannot determine debugger state"}]
     
+    if not isinstance(regions, list):
+        return [{"error": "regions must be a list"}]
+    if len(regions) > _MAX_DEBUG_REGIONS:
+        return [{"error": f"too many regions (max {_MAX_DEBUG_REGIONS})"}]
+
     results = []
+    total_requested = 0
     
     for region in regions:
+        if not isinstance(region, dict):
+            results.append({"error": "region must be an object", "region": region})
+            continue
         addr = region.get("address")
         size = region.get("size", 16)
         
@@ -849,6 +862,19 @@ def dbg_read_mem(
             continue
         
         address = parsed["value"]
+        if not isinstance(size, int):
+            results.append({"error": "size must be an integer", "address": hex_addr(address)})
+            continue
+        if size <= 0:
+            results.append({"error": "size must be > 0", "address": hex_addr(address)})
+            continue
+        if size > _MAX_DEBUG_MEMORY_BYTES:
+            results.append({"error": f"size too large (max {_MAX_DEBUG_MEMORY_BYTES})", "address": hex_addr(address)})
+            continue
+        total_requested += size
+        if total_requested > _MAX_DEBUG_TOTAL_BYTES:
+            results.append({"error": f"total read too large (max {_MAX_DEBUG_TOTAL_BYTES})", "address": hex_addr(address)})
+            continue
         
         try:
             data = ida_dbg.read_dbg_memory(address, size)  # type: ignore
@@ -884,9 +910,18 @@ def dbg_write_mem(
     except Exception:
         return [{"error": "cannot determine debugger state"}]
     
+    if not isinstance(regions, list):
+        return [{"error": "regions must be a list"}]
+    if len(regions) > _MAX_DEBUG_REGIONS:
+        return [{"error": f"too many regions (max {_MAX_DEBUG_REGIONS})"}]
+
     results = []
+    total_requested = 0
     
     for region in regions:
+        if not isinstance(region, dict):
+            results.append({"error": "region must be an object", "region": region})
+            continue
         addr = region.get("address")
         data = region.get("bytes", [])
         
@@ -900,6 +935,16 @@ def dbg_write_mem(
             continue
         
         address = parsed["value"]
+        if not isinstance(data, list):
+            results.append({"error": "bytes must be a list", "address": hex_addr(address)})
+            continue
+        if len(data) > _MAX_DEBUG_MEMORY_BYTES:
+            results.append({"error": f"bytes too long (max {_MAX_DEBUG_MEMORY_BYTES})", "address": hex_addr(address)})
+            continue
+        total_requested += len(data)
+        if total_requested > _MAX_DEBUG_TOTAL_BYTES:
+            results.append({"error": f"total write too large (max {_MAX_DEBUG_TOTAL_BYTES})", "address": hex_addr(address)})
+            continue
         
         try:
             byte_data = bytes(data)

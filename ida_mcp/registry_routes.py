@@ -40,14 +40,14 @@ def _request_token(request: Request) -> str | None:
 def is_gateway_request_authorized(request: Request) -> bool:
     """Authorize gateway access.
 
-    When gateway_token is configured, all requests must supply a matching
-    bearer token.  When no token is configured, all requests are allowed.
+    All gateway requests must supply the configured bearer token.  An empty
+    gateway_token is treated as a missing credential and fails closed.
     """
     configured_token = get_gateway_token()
     supplied_token = _request_token(request)
     if configured_token:
         return supplied_token == configured_token
-    return True
+    return False
 
 
 def _short(v: Any) -> str:
@@ -75,6 +75,14 @@ def set_debug(enable: bool) -> None:
 
 def _now() -> float:
     return time.time()
+
+
+def _valid_pid(value: Any) -> bool:
+    return isinstance(value, int) and value > 0
+
+
+def _valid_port(value: Any) -> bool:
+    return isinstance(value, int) and 1 <= value <= 65535
 
 
 def _error_response(
@@ -220,8 +228,13 @@ async def _register_handler(request: Request) -> JSONResponse:
     payload = await request.json()
     if not {"pid", "port"}.issubset(payload):
         return _error_response("missing_fields", "missing fields", 400)
+    if not _valid_pid(payload.get("pid")):
+        return _error_response("invalid_pid", "invalid pid", 400)
+    if not _valid_port(payload.get("port")):
+        return _error_response("invalid_port", "invalid port", 400)
     with registry._lock:
         pid = payload["pid"]
+        payload["host"] = LOCALHOST
         payload["last_seen_at"] = _now()
         existing_idx = registry._find_instance_index_by_pid(pid)
         previous = registry._instances[existing_idx] if existing_idx is not None else None
@@ -240,6 +253,10 @@ async def _update_instance_handler(request: Request) -> JSONResponse:
     port = payload.get("port")
     if pid is None and port is None:
         return _error_response("missing_target", "missing pid or port", 400)
+    if pid is not None and not _valid_pid(pid):
+        return _error_response("invalid_pid", "invalid pid", 400)
+    if port is not None and not _valid_port(port):
+        return _error_response("invalid_port", "invalid port", 400)
 
     with registry._lock:
         target = None
@@ -265,6 +282,8 @@ async def _deregister_handler(request: Request) -> JSONResponse:
     pid = payload.get("pid")
     if pid is None:
         return _error_response("missing_pid", "missing pid", 400)
+    if not _valid_pid(pid):
+        return _error_response("invalid_pid", "invalid pid", 400)
     with registry._lock:
         remaining = [e for e in registry._instances if e.get("pid") != pid]
         if registry._current_instance_port and not any(

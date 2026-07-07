@@ -37,6 +37,8 @@ except ImportError:
     ida_kernwin = None
 from contextlib import contextmanager
 
+_MAX_BATCH_ITEMS = 100
+
 
 def _invalidate_strings_cache() -> None:
     invalidate_strings_cache()
@@ -57,8 +59,16 @@ def set_comment(
     items: Annotated[List[Dict[str, Any]], "List of {address, comment} objects"],
 ) -> List[dict]:
     """Set comments at address(es). Each item: {address, comment}."""
+    if not isinstance(items, list):
+        return [{"error": "items must be a list"}]
+    if len(items) > _MAX_BATCH_ITEMS:
+        return [{"error": f"too many items (max {_MAX_BATCH_ITEMS})"}]
+
     results = []
     for item in items:
+        if not isinstance(item, dict):
+            results.append({"error": "item must be an object", "item": item})
+            continue
         address = item.get("address")
         comment = item.get("comment", "")
         
@@ -355,10 +365,18 @@ def patch_bytes(
     - List of integers: [0x90, 0x90, 0x90]
     - Hex string: "90 90 90" or "909090"
     """
+    if not isinstance(items, list):
+        return [{"error": "items must be a list"}]
+    if len(items) > _MAX_BATCH_ITEMS:
+        return [{"error": f"too many items (max {_MAX_BATCH_ITEMS})"}]
+
     results = []
     cache_invalidated = False
     
     for item in items:
+        if not isinstance(item, dict):
+            results.append({"error": "item must be an object", "item": item})
+            continue
         address = item.get("address")
         data = item.get("bytes")
         

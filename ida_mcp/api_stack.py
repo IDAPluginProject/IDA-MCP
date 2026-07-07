@@ -28,6 +28,7 @@ except ImportError:
     ida_hexrays = None
 
 PT_SIL = getattr(ida_typeinf, 'PT_SIL', 1) if ida_typeinf is not None else 1
+_MAX_BATCH_ITEMS = 100
 
 
 def _error(message: str, **extra: Any) -> dict:
@@ -316,9 +317,17 @@ def declare_stack(
 ) -> List[dict]:
     """Create stack variable(s) at specified offset(s)."""
     wait_for_auto_analysis()
+    if not isinstance(items, list):
+        return [{"error": "items must be a list"}]
+    if len(items) > _MAX_BATCH_ITEMS:
+        return [{"error": f"too many items (max {_MAX_BATCH_ITEMS})"}]
+
     results = []
     
     for item in items:
+        if not isinstance(item, dict):
+            results.append({"error": "item must be an object", "item": item})
+            continue
         func_addr = item.get("function_address")
         offset = item.get("offset")
         name = item.get("name")
@@ -402,9 +411,17 @@ def delete_stack(
     items: Annotated[List[Dict[str, Any]], "List of {function_address, name}"],
 ) -> List[dict]:
     """Delete stack variable(s) by name."""
+    if not isinstance(items, list):
+        return [{"error": "items must be a list"}]
+    if len(items) > _MAX_BATCH_ITEMS:
+        return [{"error": f"too many items (max {_MAX_BATCH_ITEMS})"}]
+
     results = []
     
     for item in items:
+        if not isinstance(item, dict):
+            results.append({"error": "item must be an object", "item": item})
+            continue
         func_addr = item.get("function_address")
         name = item.get("name")
         

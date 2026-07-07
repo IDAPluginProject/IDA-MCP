@@ -26,7 +26,8 @@ IDA-MCP/
 - Each IDA instance chooses a free port starting at `ida_default_port` and serves MCP at `/mcp/`.
 - The standalone gateway listens on `127.0.0.1:11338`, registers instances under `/internal/*`, and exposes the proxy MCP endpoint at `/mcp`.
 - Tool registration is decorator based: use `@tool` plus `@idaread` or `@idawrite`.
-- `py_eval` and `dbg_*` tools are unsafe and gated by `enable_unsafe` in `ida_mcp/config.conf`.
+- Gateway requests require `gateway_token`; an empty token fails closed.
+- `py_eval`, `patch_bytes`, `apply_patch`, and `dbg_*` tools are unsafe and gated by `enable_unsafe=false` by default in `ida_mcp/config.conf`.
 
 ## Installation
 
@@ -46,7 +47,7 @@ The installer performs the full setup flow:
 2. Locate the IDAPython interpreter used by that IDA installation.
 3. Optionally install `requirements.txt` into IDA's Python environment.
 4. Copy `ida_mcp.py`, `ida-plugin.json`, and the `ida_mcp/` package into IDA's `plugins/` directory.
-5. Review and write `ida_mcp/config.conf`.
+5. Review and write `ida_mcp/config.conf`, including an auto-generated gateway token.
 
 For manual installation, copy `ida_mcp.py`, `ida-plugin.json`, and the
 `ida_mcp/` directory into IDA's plugin directory, then install dependencies into

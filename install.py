@@ -13,6 +13,7 @@ import json
 import locale
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -187,6 +188,10 @@ def _init_i18n(lang: str) -> None:
         "config_enable_unsafe": {
             _ZH: "启用 unsafe 工具（py_eval、调试器）",
             _EN: "Enable unsafe tools (py_eval, debugger)",
+        },
+        "config_gateway_token": {
+            _ZH: "HTTP 网关共享 token（自动生成）",
+            _EN: "HTTP gateway shared token (auto-generated)",
         },
         "config_auto_start": {
             _ZH: "IDA 打开数据库时自动启动插件",
@@ -607,14 +612,16 @@ def main() -> None:
     ida_exe = os.path.join(ida_dir, ida_exe_name)
 
     # Build config items for interactive review
+    gateway_token = secrets.token_urlsafe(32)
     config_items = [
         ("ida_path",                t("config_ida_path"),               f'"{ida_exe}"',          "str"),
         ("ida_python",              t("config_ida_python"),             f'"{ida_python}"',       "str"),
-        ("enable_unsafe",           t("config_enable_unsafe"),          "true",                  "bool"),
+        ("enable_unsafe",           t("config_enable_unsafe"),          "false",                 "bool"),
         ("auto_start",              t("config_auto_start"),             "true",                  "bool"),
         ("open_in_ida_autonomous",  t("config_open_in_ida_autonomous"), "true",                  "bool"),
         ("http_host",               t("config_http_host"),              '"127.0.0.1"',           "str"),
         ("http_port",               t("config_http_port"),              "11338",                 "int"),
+        ("gateway_token",           t("config_gateway_token"),          f'"{gateway_token}"',     "str"),
         ("request_timeout",         t("config_request_timeout"),        "30",                    "int"),
         ("debug",                   t("config_debug"),                  "false",                 "bool"),
     ]
