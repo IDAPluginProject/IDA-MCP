@@ -4,12 +4,12 @@ Reads the config.conf file and provides access to all configurable options.
 
 Configuration Options
 ====================
-Transport switches:
-    - enable_http: whether to enable HTTP proxy mode (default true)
+Runtime switches:
+    - enable_gateway: whether to enable the gateway and MCP proxy (default true)
     - enable_unsafe: whether to enable unsafe tools (default false)
     - wsl_path_bridge: whether to enable WSL/Windows path bridging (default false)
 
-HTTP proxy config:
+Gateway HTTP config:
     - http_host: gateway bind address (default 127.0.0.1)
     - http_port: gateway listen port (default 11338)
     - http_path: MCP endpoint path (default /mcp)
@@ -41,11 +41,11 @@ _CONFIG_FILE = os.path.join(_CONFIG_DIR, "config.conf")
 
 # default configuration
 _DEFAULT_CONFIG = {
-    # transport switches
-    "enable_http": True,  # whether to enable HTTP proxy mode
+    # runtime switches
+    "enable_gateway": True,  # whether to enable the gateway and MCP proxy
     "enable_unsafe": False,  # whether to enable unsafe tools
     "wsl_path_bridge": False,  # whether to enable WSL/Windows path bridging
-    # HTTP proxy config
+    # Gateway HTTP config
     "http_host": "127.0.0.1",
     "http_port": 11338,
     "http_path": "/mcp",
@@ -218,12 +218,12 @@ def get_gateway_internal_url() -> str:
 
 
 # ============================================================================
-# HTTP proxy config accessors
+# Gateway HTTP config accessors
 # ============================================================================
 
 
 def get_http_port() -> int:
-    """Get the HTTP proxy listen port."""
+    """Get the gateway HTTP listen port."""
     config = load_config()
     return _coerce_int_range(config.get("http_port", 11338), 11338, 1, 65535)
 
@@ -345,14 +345,14 @@ def is_debug_enabled() -> bool:
 
 
 # ============================================================================
-# Transport switches
+# Runtime switches
 # ============================================================================
 
 
-def is_http_enabled() -> bool:
-    """Whether HTTP proxy mode is enabled."""
+def is_gateway_enabled() -> bool:
+    """Whether the gateway and MCP proxy are enabled."""
     config = load_config()
-    return bool(config.get("enable_http", True))
+    return _coerce_bool(config.get("enable_gateway", True), True)
 
 
 def is_unsafe_enabled() -> bool:

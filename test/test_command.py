@@ -18,11 +18,16 @@ class TestCommandCli:
             seen["timeout"] = startup_timeout
             return {
                 "gateway": {"alive": True},
-                "proxy": {"alive": True},
                 "instances": [],
                 "count": 0,
                 "gateway_internal": {"host": "127.0.0.1", "port": 11338},
-                "http_proxy": {"host": "127.0.0.1", "port": 11338, "path": "/mcp"},
+                "gateway_proxy": {
+                    "alive": True,
+                    "enabled": True,
+                    "host": "127.0.0.1",
+                    "port": 11338,
+                    "path": "/mcp",
+                },
             }
 
         monkeypatch.setattr(command.control, "ensure_gateway_running", fake_ensure)
@@ -57,11 +62,16 @@ class TestCommandCli:
             "gateway_status_payload",
             lambda: {
                 "gateway": {"alive": True, "log": "gateway.log"},
-                "proxy": {"alive": True, "enabled": True},
                 "instances": [{"pid": 123, "port": 10000, "input_file": "a.exe"}],
                 "count": 1,
                 "gateway_internal": {"host": "127.0.0.1", "port": 11338},
-                "http_proxy": {"host": "127.0.0.1", "port": 11338, "path": "/mcp"},
+                "gateway_proxy": {
+                    "alive": True,
+                    "enabled": True,
+                    "host": "127.0.0.1",
+                    "port": 11338,
+                    "path": "/mcp",
+                },
             },
         )
 

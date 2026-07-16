@@ -1,16 +1,16 @@
-"""Runtime helpers that coordinate optional standalone transports."""
+"""Runtime helpers that coordinate the standalone gateway."""
 from __future__ import annotations
 
 
-def start_http_proxy_if_gateway() -> str | None:
-    """Ensure the client-facing HTTP proxy daemon is running when enabled."""
+def start_gateway_proxy_if_enabled() -> str | None:
+    """Ensure the client-facing gateway MCP proxy is running when enabled."""
     from . import registry
-    from .config import get_http_url, is_http_enabled
+    from .config import get_http_url, is_gateway_enabled
 
-    if not is_http_enabled():
+    if not is_gateway_enabled():
         return None
 
-    if registry.ensure_http_proxy_running():
+    if registry.ensure_gateway_proxy_running():
         return get_http_url()
 
     return None

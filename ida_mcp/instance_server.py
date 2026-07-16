@@ -13,7 +13,7 @@ _startup_thread: threading.Thread | None = None
 _startup_stop = threading.Event()
 _active_port: int | None = None
 
-_register_with_coordinator_fn = None
+_register_with_gateway_fn = None
 _start_tick_thread_fn = None
 _start_heartbeat_thread_fn = None
 _stop_heartbeat_thread_fn = None
@@ -43,17 +43,17 @@ def _error(msg: str):
 
 def configure_runtime_callbacks(
     *,
-    register_with_coordinator_fn=None,
+    register_with_gateway_fn=None,
     start_tick_thread_fn=None,
     start_heartbeat_thread_fn=None,
     stop_heartbeat_thread_fn=None,
     update_lifecycle_state_fn=None,
     ensure_gateway_ready_fn=None,
 ) -> None:
-    global _register_with_coordinator_fn, _start_tick_thread_fn, _start_heartbeat_thread_fn
+    global _register_with_gateway_fn, _start_tick_thread_fn, _start_heartbeat_thread_fn
     global _stop_heartbeat_thread_fn, _update_lifecycle_state_fn, _ensure_gateway_ready_fn
-    if register_with_coordinator_fn is not None:
-        _register_with_coordinator_fn = register_with_coordinator_fn
+    if register_with_gateway_fn is not None:
+        _register_with_gateway_fn = register_with_gateway_fn
     if start_tick_thread_fn is not None:
         _start_tick_thread_fn = start_tick_thread_fn
     if start_heartbeat_thread_fn is not None:
@@ -129,7 +129,7 @@ def _complete_startup_in_background(
     _info(
         f"Instance MCP listener is ready at http://{host}:{port}/mcp/; registering with gateway."
     )
-    if _register_with_coordinator_fn is None or not _register_with_coordinator_fn(port):
+    if _register_with_gateway_fn is None or not _register_with_gateway_fn(port):
         _warn(
             f"Instance MCP server is listening on {host}:{port}, but gateway registration is incomplete."
         )

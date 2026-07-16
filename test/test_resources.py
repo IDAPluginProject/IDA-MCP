@@ -19,13 +19,10 @@ DEFAULT_HOST = "127.0.0.1"
 REQUEST_TIMEOUT = 30
 _LOG_DIR = str(Path(__file__).resolve().parent.parent / ".artifacts" / "api_logs")
 
-_uri_call_logs: Dict[str, List[Dict[str, Any]]] = {
-    "http": [],
-}
+_uri_call_logs: List[Dict[str, Any]] = []
 
 
 def _log_uri_call(
-    transport: str,
     uri: str,
     port: int,
     result: Any,
@@ -33,10 +30,10 @@ def _log_uri_call(
     success: bool,
     error: Optional[str] = None,
 ) -> None:
-    _uri_call_logs[transport].append(
+    _uri_call_logs.append(
         {
             "timestamp": datetime.now().isoformat(),
-            "transport": transport,
+            "endpoint": "instance",
             "uri": uri,
             "port": port,
             "success": success,
@@ -54,33 +51,33 @@ def _save_uri_log() -> None:
     except Exception:
         return
 
-    for transport, calls in _uri_call_logs.items():
-        if not calls:
-            continue
-        log_file = os.path.join(_LOG_DIR, f"{transport}_uri.json")
-        try:
-            with open(log_file, "w", encoding="utf-8") as handle:
-                json.dump(
-                    {
-                        "transport": transport,
-                        "category": "uri_resources",
-                        "generated_at": datetime.now().isoformat(),
-                        "total_calls": len(calls),
-                        "calls": calls,
-                    },
-                    handle,
-                    indent=2,
-                    ensure_ascii=False,
-                    default=str,
-                )
-        except Exception:
-            pass
+    if not _uri_call_logs:
+        return
+
+    log_file = os.path.join(_LOG_DIR, "uri.json")
+    try:
+        with open(log_file, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "endpoint": "instance",
+                    "category": "uri_resources",
+                    "generated_at": datetime.now().isoformat(),
+                    "total_calls": len(_uri_call_logs),
+                    "calls": _uri_call_logs,
+                },
+                handle,
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+    except Exception:
+        pass
 
 
 atexit.register(_save_uri_log)
 
 
-async def _read_resource_async(uri: str, port: int, transport: str = "http") -> Dict[str, Any]:
+async def _read_resource_async(uri: str, port: int) -> Dict[str, Any]:
     start_time = time.perf_counter()
     try:
         from fastmcp import Client
@@ -105,18 +102,18 @@ async def _read_resource_async(uri: str, port: int, transport: str = "http") -> 
         else:
             data = result
 
-        _log_uri_call(transport, uri, port, data, (time.perf_counter() - start_time) * 1000, True)
+        _log_uri_call(uri, port, data, (time.perf_counter() - start_time) * 1000, True)
         return {"uri": uri, "data": data}
     except Exception as exc:
-        _log_uri_call(transport, uri, port, None, (time.perf_counter() - start_time) * 1000, False, str(exc))
+        _log_uri_call(uri, port, None, (time.perf_counter() - start_time) * 1000, False, str(exc))
         return {"uri": uri, "error": str(exc)}
 
 
-def read_resource(uri: str, port: int, transport: str = "http") -> Dict[str, Any]:
-    return asyncio.run(_read_resource_async(uri, port, transport))
+def read_resource(uri: str, port: int) -> Dict[str, Any]:
+    return asyncio.run(_read_resource_async(uri, port))
 
 
-async def _list_resources_async(port: int, transport: str = "http") -> Dict[str, Any]:
+async def _list_resources_async(port: int) -> Dict[str, Any]:
     start_time = time.perf_counter()
     try:
         from fastmcp import Client
@@ -138,15 +135,15 @@ async def _list_resources_async(port: int, transport: str = "http") -> Dict[str,
             "templates": templates,
             "total": len(resources) + len(templates),
         }
-        _log_uri_call(transport, "resources/list", port, data, (time.perf_counter() - start_time) * 1000, True)
+        _log_uri_call("resources/list", port, data, (time.perf_counter() - start_time) * 1000, True)
         return data
     except Exception as exc:
-        _log_uri_call(transport, "resources/list", port, None, (time.perf_counter() - start_time) * 1000, False, str(exc))
+        _log_uri_call("resources/list", port, None, (time.perf_counter() - start_time) * 1000, False, str(exc))
         return {"error": str(exc)}
 
 
-def list_resources(port: int, transport: str = "http") -> Dict[str, Any]:
-    return asyncio.run(_list_resources_async(port, transport))
+def list_resources(port: int) -> Dict[str, Any]:
+    return asyncio.run(_list_resources_async(port))
 
 
 def _normalize_uri_values(values: List[Any]) -> List[str]:
@@ -177,14 +174,9 @@ def _resource_function_address(complex_baseline: Dict[str, Any]) -> str:
     return complex_baseline["functions"]["ida_mcp_complex_dispatch"]["start_ea"]
 
 
-@pytest.fixture
-def resource_transport():
-    return "http"
-
-
 class TestResourceDiscovery:
-    def test_list_resources(self, instance_port, resource_transport):
-        result = list_resources(instance_port, resource_transport)
+    def test_list_resources(self, instance_port):
+        result = list_resources(instance_port)
         if "error" in result:
             pytest.skip(f"Cannot list resources: {result['error']}")
 
@@ -203,8 +195,8 @@ class TestResourceDiscovery:
 
 
 class TestMetadataResource:
-    def test_idb_metadata(self, instance_port, resource_transport, complex_baseline):
-        result = read_resource("ida://idb/metadata", instance_port, resource_transport)
+    def test_idb_metadata(self, instance_port, complex_baseline):
+        result = read_resource("ida://idb/metadata", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read metadata: {result['error']}")
 
@@ -216,17 +208,17 @@ class TestMetadataResource:
 
 
 class TestFunctionResources:
-    def test_functions_list(self, instance_port, resource_transport):
-        result = read_resource("ida://functions", instance_port, resource_transport)
+    def test_functions_list(self, instance_port):
+        result = read_resource("ida://functions", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read functions: {result['error']}")
 
         _assert_list_resource(result["data"], "functions")
 
-    def test_function_detail(self, instance_port, resource_transport, complex_baseline):
+    def test_function_detail(self, instance_port, complex_baseline):
         address = _resource_function_address(complex_baseline)
         uri = f"ida://function/{address}"
-        result = read_resource(uri, instance_port, resource_transport)
+        result = read_resource(uri, instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read function detail: {result['error']}")
 
@@ -237,9 +229,9 @@ class TestFunctionResources:
         assert data["address"].lower() == address.lower()
         assert data["name"] == "ida_mcp_complex_dispatch"
 
-    def test_function_decompile(self, instance_port, resource_transport, complex_baseline):
+    def test_function_decompile(self, instance_port, complex_baseline):
         uri = f"ida://function/{_resource_function_address(complex_baseline)}/decompile"
-        result = read_resource(uri, instance_port, resource_transport)
+        result = read_resource(uri, instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read function decompile: {result['error']}")
 
@@ -251,9 +243,9 @@ class TestFunctionResources:
         assert data["name"] == "ida_mcp_complex_dispatch"
         assert "decompiled" in data
 
-    def test_function_disasm(self, instance_port, resource_transport, complex_baseline):
+    def test_function_disasm(self, instance_port, complex_baseline):
         uri = f"ida://function/{_resource_function_address(complex_baseline)}/disasm"
-        result = read_resource(uri, instance_port, resource_transport)
+        result = read_resource(uri, instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read function disasm: {result['error']}")
 
@@ -263,9 +255,9 @@ class TestFunctionResources:
         _assert_detail_resource(data, "function_disasm")
         assert isinstance(data["items"], list)
 
-    def test_function_basic_blocks(self, instance_port, resource_transport, complex_baseline):
+    def test_function_basic_blocks(self, instance_port, complex_baseline):
         uri = f"ida://function/{_resource_function_address(complex_baseline)}/basic_blocks"
-        result = read_resource(uri, instance_port, resource_transport)
+        result = read_resource(uri, instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read function basic blocks: {result['error']}")
 
@@ -276,9 +268,9 @@ class TestFunctionResources:
         assert isinstance(data["items"], list)
         assert len(data["items"]) == complex_baseline["functions"]["ida_mcp_complex_dispatch"]["basic_block_count"]
 
-    def test_function_stack(self, instance_port, resource_transport, complex_baseline):
+    def test_function_stack(self, instance_port, complex_baseline):
         uri = f"ida://function/{complex_baseline['functions']['ida_mcp_stack_heavy_transform']['start_ea']}/stack"
-        result = read_resource(uri, instance_port, resource_transport)
+        result = read_resource(uri, instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read function stack: {result['error']}")
 
@@ -295,26 +287,26 @@ class TestFunctionResources:
 
 
 class TestCoreListResources:
-    def test_strings(self, instance_port, resource_transport):
-        result = read_resource("ida://strings", instance_port, resource_transport)
+    def test_strings(self, instance_port):
+        result = read_resource("ida://strings", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read strings: {result['error']}")
         _assert_list_resource(result["data"], "strings")
 
-    def test_globals(self, instance_port, resource_transport):
-        result = read_resource("ida://globals", instance_port, resource_transport)
+    def test_globals(self, instance_port):
+        result = read_resource("ida://globals", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read globals: {result['error']}")
         _assert_list_resource(result["data"], "globals")
 
-    def test_types(self, instance_port, resource_transport):
-        result = read_resource("ida://types", instance_port, resource_transport)
+    def test_types(self, instance_port):
+        result = read_resource("ida://types", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read types: {result['error']}")
         _assert_list_resource(result["data"], "types")
 
-    def test_segments_and_segment_detail(self, instance_port, resource_transport):
-        result = read_resource("ida://segments", instance_port, resource_transport)
+    def test_segments_and_segment_detail(self, instance_port):
+        result = read_resource("ida://segments", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read segments: {result['error']}")
         data = result["data"]
@@ -323,13 +315,13 @@ class TestCoreListResources:
             pytest.skip("No segments available")
 
         name = data["items"][0]["name"]
-        detail = read_resource(f"ida://segment/{name}", instance_port, resource_transport)
+        detail = read_resource(f"ida://segment/{name}", instance_port)
         if "error" in detail:
             pytest.skip(f"Cannot read segment detail: {detail['error']}")
         _assert_detail_resource(detail["data"], "segment")
 
-    def test_imports_exports_and_entry_points(self, instance_port, resource_transport):
-        imports_result = read_resource("ida://imports", instance_port, resource_transport)
+    def test_imports_exports_and_entry_points(self, instance_port):
+        imports_result = read_resource("ida://imports", instance_port)
         if "error" in imports_result:
             pytest.skip(f"Cannot read imports: {imports_result['error']}")
         imports_data = imports_result["data"]
@@ -337,22 +329,22 @@ class TestCoreListResources:
 
         if imports_data["items"]:
             module = imports_data["items"][0]["module"]
-            module_result = read_resource(f"ida://imports/{module}", instance_port, resource_transport)
+            module_result = read_resource(f"ida://imports/{module}", instance_port)
             if "error" not in module_result:
                 _assert_detail_resource(module_result["data"], "imports_module")
 
-        exports_result = read_resource("ida://exports", instance_port, resource_transport)
+        exports_result = read_resource("ida://exports", instance_port)
         if "error" in exports_result:
             pytest.skip(f"Cannot read exports: {exports_result['error']}")
         _assert_list_resource(exports_result["data"], "exports")
 
-        entry_points_result = read_resource("ida://entry_points", instance_port, resource_transport)
+        entry_points_result = read_resource("ida://entry_points", instance_port)
         if "error" in entry_points_result:
             pytest.skip(f"Cannot read entry points: {entry_points_result['error']}")
         _assert_list_resource(entry_points_result["data"], "entry_points")
 
-    def test_structs_and_struct_detail(self, instance_port, resource_transport):
-        result = read_resource("ida://structs", instance_port, resource_transport)
+    def test_structs_and_struct_detail(self, instance_port):
+        result = read_resource("ida://structs", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read structs: {result['error']}")
         data = result["data"]
@@ -362,39 +354,39 @@ class TestCoreListResources:
             pytest.skip("No structs available")
 
         name = data["items"][0]["name"]
-        detail = read_resource(f"ida://struct/{name}", instance_port, resource_transport)
+        detail = read_resource(f"ida://struct/{name}", instance_port)
         if "error" in detail:
             pytest.skip(f"Cannot read struct detail: {detail['error']}")
         _assert_detail_resource(detail["data"], "struct")
 
 
 class TestXrefAndMemoryResources:
-    def test_xrefs_to_and_summary(self, instance_port, resource_transport, complex_baseline):
+    def test_xrefs_to_and_summary(self, instance_port, complex_baseline):
         addr = _resource_function_address(complex_baseline)
-        result = read_resource(f"ida://xrefs/to/{addr}", instance_port, resource_transport)
+        result = read_resource(f"ida://xrefs/to/{addr}", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read xrefs_to: {result['error']}")
         _assert_detail_resource(result["data"], "xrefs_to")
 
-        summary = read_resource(f"ida://xrefs/to/{addr}/summary", instance_port, resource_transport)
+        summary = read_resource(f"ida://xrefs/to/{addr}/summary", instance_port)
         if "error" in summary:
             pytest.skip(f"Cannot read xrefs_to summary: {summary['error']}")
         _assert_detail_resource(summary["data"], "xrefs_to_summary")
 
-    def test_xrefs_from_and_summary(self, instance_port, resource_transport, complex_baseline):
+    def test_xrefs_from_and_summary(self, instance_port, complex_baseline):
         addr = _resource_function_address(complex_baseline)
-        result = read_resource(f"ida://xrefs/from/{addr}", instance_port, resource_transport)
+        result = read_resource(f"ida://xrefs/from/{addr}", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read xrefs_from: {result['error']}")
         _assert_detail_resource(result["data"], "xrefs_from")
 
-        summary = read_resource(f"ida://xrefs/from/{addr}/summary", instance_port, resource_transport)
+        summary = read_resource(f"ida://xrefs/from/{addr}/summary", instance_port)
         if "error" in summary:
             pytest.skip(f"Cannot read xrefs_from summary: {summary['error']}")
         _assert_detail_resource(summary["data"], "xrefs_from_summary")
 
-    def test_memory_read(self, instance_port, resource_transport, complex_baseline):
-        result = read_resource(f"ida://memory/{complex_baseline['globals']['ida_mcp_patch_bytes']['ea']}?size=16", instance_port, resource_transport)
+    def test_memory_read(self, instance_port, complex_baseline):
+        result = read_resource(f"ida://memory/{complex_baseline['globals']['ida_mcp_patch_bytes']['ea']}?size=16", instance_port)
         if "error" in result:
             pytest.skip(f"Cannot read memory: {result['error']}")
         data = result["data"]
@@ -405,12 +397,12 @@ class TestXrefAndMemoryResources:
 
 
 class TestInvalidResources:
-    def test_invalid_uri(self, instance_port, resource_transport):
-        result = read_resource("ida://nonexistent/invalid", instance_port, resource_transport)
+    def test_invalid_uri(self, instance_port):
+        result = read_resource("ida://nonexistent/invalid", instance_port)
         assert "error" in result or result.get("data") in (None, {})
 
-    def test_invalid_address(self, instance_port, resource_transport):
-        result = read_resource("ida://function/invalid_addr", instance_port, resource_transport)
+    def test_invalid_address(self, instance_port):
+        result = read_resource("ida://function/invalid_addr", instance_port)
         if "error" in result:
-            pytest.skip(f"Transport returned an error instead of resource payload: {result['error']}")
+            pytest.skip(f"Instance endpoint returned an error instead of resource payload: {result['error']}")
         _assert_resource_error(result["data"], "invalid_address")

@@ -3,7 +3,7 @@
 ## Responsibility
 
 IDA-MCP is the standalone IDA Pro plugin and MCP gateway project. It owns IDA
-runtime integration, FastMCP tools/resources, direct instance HTTP MCP transport,
+runtime integration, FastMCP tools/resources, direct instance HTTP MCP servers,
 gateway/proxy behavior, CLI control, and live-IDA integration tests.
 
 It does not own the desktop IDE, chat/workspace state, installer UI, or other

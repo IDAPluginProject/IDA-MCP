@@ -114,7 +114,7 @@ from ida_mcp.config import (
     get_ida_default_port,
     get_ida_host,
     is_auto_start_enabled,
-    is_http_enabled,
+    is_gateway_enabled,
 )
 
 
@@ -248,13 +248,13 @@ class IDAMCPPlugin(idaapi.plugin_t if idaapi else object):  # type: ignore
             plugin_runtime._info("Server running -> toggling to stop.")
             plugin_runtime.stop_server()
             return
-        # 检查 HTTP 传输配置
-        if not is_http_enabled():
+        # 检查 gateway 配置
+        if not is_gateway_enabled():
             plugin_runtime._warn(
-                "HTTP mode is disabled in config.conf. No MCP server started."
+                "Gateway is disabled in config.conf. No MCP server started."
             )
             return
-        plugin_runtime._info("HTTP transport enabled.")
+        plugin_runtime._info("Gateway proxy enabled.")
         host = get_ida_host()
         # 端口选择: 若 launcher 注入 IDA_MCP_PORT，则以其为起点继续向上探测
         # 必须使用实际监听地址进行端口探测

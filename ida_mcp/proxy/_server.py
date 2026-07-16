@@ -1,6 +1,6 @@
 """Gateway FastMCP proxy server instance.
 
-This module creates the FastMCP server used by the HTTP gateway proxy and
+This module creates the FastMCP server used by the gateway MCP proxy and
 registers all forwarded tools.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ from . import register_tools
 
 server = FastMCP(
     name="IDA-MCP-Proxy",
-    instructions="""IDA MCP 代理 - 通过协调器访问多个 IDA 实例。
+    instructions="""IDA MCP 代理 - 通过网关访问多个 IDA 实例。
 
 核心管理:
 - check_connection: 检查连接状态
@@ -76,7 +76,7 @@ server = FastMCP(
 
 @server.tool(description="Health check. Returns {ok: bool, count: int} where count is number of registered IDA instances.")
 def check_connection() -> dict:
-    """Check coordinator connection status."""
+    """Check gateway connection status."""
     data = http_get('/instances')
     if not isinstance(data, list):
         return {"ok": False, "count": 0}

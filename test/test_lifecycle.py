@@ -774,11 +774,10 @@ class TestLifecycleClose:
 class TestRegistryStartup:
     """网关启动与注册的回归测试。"""
 
-    def test_config_exposes_only_http_transport_switch(self):
-        assert not hasattr(config, "is_" + "stdio" + "_enabled")
-        fake_config = {"enable_http": True}
+    def test_config_exposes_gateway_switch(self):
+        fake_config = {"enable_gateway": True}
         with patch("ida_mcp.config.load_config", return_value=fake_config):
-            assert config.is_http_enabled() is True
+            assert config.is_gateway_enabled() is True
 
     def test_instance_startup_checks_gateway_before_listener_launch(self, monkeypatch):
         """实例启动必须先完成 gateway preflight，再启动 listener。"""
@@ -853,10 +852,10 @@ class TestRegistryStartup:
             app = registry_server._build_app()
 
         async def _run_lifespan():
-            assert instance_registry._proxy_ready is False
+            assert instance_registry._gateway_proxy_ready is False
             async with app.router.lifespan_context(app):
-                assert instance_registry._proxy_ready is True
-            assert instance_registry._proxy_ready is False
+                assert instance_registry._gateway_proxy_ready is True
+            assert instance_registry._gateway_proxy_ready is False
 
         import asyncio
 
@@ -1195,63 +1194,65 @@ class TestRegistryStartup:
 
     def test_init_and_register_retries_remote_registration(self):
         """远端注册瞬时失败时，应快速重试而不是静默丢失实例。"""
-        with patch("ida_mcp.registry.is_http_enabled", return_value=True):
+        with patch("ida_mcp.registry.is_gateway_enabled", return_value=True):
             with patch(
                 "ida_mcp.registry.ensure_registry_server", return_value=True
             ) as mock_ensure:
-                with patch(
-                    "ida_mcp.registry._request_json",
-                    side_effect=[None, {"status": "ok"}],
-                ) as mock_request:
-                    with patch("atexit.register"):
-                        with patch.object(registry, "_deregister_registered", False):
-                            registry.init_and_register(10000, "input.bin", "db.i64")
+                with patch("ida_mcp.registry._gateway_internal_alive", return_value=True):
+                    with patch(
+                        "ida_mcp.registry._request_json",
+                        side_effect=[None, {"status": "ok"}],
+                    ) as mock_request:
+                        with patch("atexit.register"):
+                            with patch.object(registry, "_deregister_registered", False):
+                                registry.init_and_register(10000, "input.bin", "db.i64")
 
         assert mock_ensure.call_count == 1
         assert mock_request.call_count == 2
 
     def test_ensure_registry_server_spawns_detached_daemon(self):
         """网关不可达时，应拉起独立 daemon，而不是依赖当前 IDA。"""
-        with patch("ida_mcp.registry._gateway_ready", side_effect=[False, False, True]):
-            with patch("ida_mcp.registry._gateway_internal_alive", return_value=False):
-                with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
-                    with patch(
-                        "ida_mcp.registry._resolve_python_executable",
-                        return_value="/usr/bin/python3",
-                    ):
-                        assert (
-                            registry.ensure_registry_server(startup_timeout=0.3) is True
-                        )
+        with patch("ida_mcp.registry.get_gateway_token", return_value="token"):
+            with patch("ida_mcp.registry._gateway_ready", side_effect=[False, False, True]):
+                with patch("ida_mcp.registry._gateway_internal_alive", return_value=False):
+                    with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
+                        with patch(
+                            "ida_mcp.registry._resolve_python_executable",
+                            return_value="/usr/bin/python3",
+                        ):
+                            assert (
+                                registry.ensure_registry_server(startup_timeout=0.3) is True
+                            )
 
         assert mock_spawn.call_count == 1
 
     def test_ensure_registry_server_binds_to_http_host(self):
         """网关子进程应绑定 http_host，而不是客户端连接地址。"""
-        with patch("ida_mcp.registry._gateway_ready", side_effect=[False, False, True]):
-            with patch("ida_mcp.registry._gateway_internal_alive", return_value=False):
-                with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
-                    with patch(
-                        "ida_mcp.registry._resolve_python_executable",
-                        return_value="/usr/bin/python3",
-                    ):
+        with patch("ida_mcp.registry.get_gateway_token", return_value="token"):
+            with patch("ida_mcp.registry._gateway_ready", side_effect=[False, False, True]):
+                with patch("ida_mcp.registry._gateway_internal_alive", return_value=False):
+                    with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
                         with patch(
-                            "ida_mcp.registry.get_http_bind_host",
-                            return_value="0.0.0.0",
+                            "ida_mcp.registry._resolve_python_executable",
+                            return_value="/usr/bin/python3",
                         ):
                             with patch(
-                                "ida_mcp.registry.get_gateway_internal_port",
-                                return_value=11338,
+                                "ida_mcp.registry.get_http_bind_host",
+                                return_value="0.0.0.0",
                             ):
-                                assert (
-                                    registry.ensure_registry_server(startup_timeout=0.3)
-                                    is True
-                                )
+                                with patch(
+                                    "ida_mcp.registry.get_gateway_internal_port",
+                                    return_value=11338,
+                                ):
+                                    assert (
+                                        registry.ensure_registry_server(startup_timeout=0.3)
+                                        is True
+                                    )
 
         spawn_args = mock_spawn.call_args.args[0]
         assert spawn_args == [
             "/usr/bin/python3",
-            "-m",
-            "ida_mcp.registry_server",
+            os.path.join(registry._package_dir(), "registry_server.py"),
             "--host",
             "0.0.0.0",
             "--port",
@@ -1260,16 +1261,17 @@ class TestRegistryStartup:
 
     def test_ensure_registry_server_refuses_second_spawn_on_occupied_port(self):
         """已有监听但健康检查失败时，不应继续抢占同一端口启动第二个网关。"""
-        with patch("ida_mcp.registry._gateway_ready", return_value=False):
-            with patch("ida_mcp.registry._gateway_internal_alive", return_value=True):
-                with patch(
-                    "ida_mcp.registry._wait_for_gateway_ready", return_value=False
-                ):
-                    with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
-                        assert (
-                            registry.ensure_registry_server(startup_timeout=0.1)
-                            is False
-                        )
+        with patch("ida_mcp.registry.get_gateway_token", return_value="token"):
+            with patch("ida_mcp.registry._gateway_ready", return_value=False):
+                with patch("ida_mcp.registry._gateway_internal_alive", return_value=True):
+                    with patch(
+                        "ida_mcp.registry._wait_for_gateway_ready", return_value=False
+                    ):
+                        with patch("ida_mcp.registry._spawn_detached") as mock_spawn:
+                            assert (
+                                registry.ensure_registry_server(startup_timeout=0.1)
+                                is False
+                            )
 
         assert mock_spawn.call_count == 0
         status = registry.get_registry_server_status()
@@ -1309,11 +1311,11 @@ class TestRegistryStartup:
 
         assert resolved.lower() == r"d:\portable-python-3.12\python.exe"
 
-    def test_ensure_http_proxy_running_uses_gateway_process(self):
-        """HTTP proxy 应由已启动的网关进程内建拉起，而不是另起独立进程。"""
-        with patch("ida_mcp.config.is_http_enabled", return_value=True):
+    def test_ensure_gateway_proxy_running_uses_gateway_process(self):
+        """Gateway proxy 应由已启动的网关进程内建拉起，而不是另起独立进程。"""
+        with patch("ida_mcp.registry.is_gateway_enabled", return_value=True):
             with patch(
-                "ida_mcp.registry._http_proxy_alive", side_effect=[False, False, True]
+                "ida_mcp.registry._gateway_proxy_alive", side_effect=[False, False, True]
             ):
                 with patch(
                     "ida_mcp.registry.ensure_registry_server", return_value=True
@@ -1338,7 +1340,7 @@ class TestRegistryStartup:
                                 clear=False,
                             ):
                                 assert (
-                                    registry.ensure_http_proxy_running(
+                                    registry.ensure_gateway_proxy_running(
                                         startup_timeout=0.3
                                     )
                                     is True
@@ -1348,16 +1350,16 @@ class TestRegistryStartup:
         assert mock_request.call_count == 1
         assert mock_spawn.call_count == 0
 
-    def test_start_http_proxy_returns_connectable_gateway_url(self):
+    def test_start_gateway_proxy_returns_connectable_gateway_url(self):
         """插件日志应返回可连接的网关 URL，而不是 0.0.0.0。"""
-        with patch("ida_mcp.registry.ensure_http_proxy_running", return_value=True):
-            with patch("ida_mcp.config.is_http_enabled", return_value=True):
+        with patch("ida_mcp.registry.ensure_gateway_proxy_running", return_value=True):
+            with patch("ida_mcp.config.is_gateway_enabled", return_value=True):
                 with patch(
                     "ida_mcp.config.get_http_url",
                     return_value="http://127.0.0.1:11338/mcp",
                 ):
                     assert (
-                        runtime.start_http_proxy_if_gateway()
+                        runtime.start_gateway_proxy_if_enabled()
                         == "http://127.0.0.1:11338/mcp"
                     )
 

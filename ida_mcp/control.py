@@ -27,12 +27,20 @@ from .errors import error_payload
 
 def gateway_status_payload() -> dict[str, Any]:
     gateway = dict(registry.get_registry_server_status())
-    proxy = registry.get_http_proxy_status()
+    gateway_proxy = dict(registry.get_gateway_proxy_status())
+    gateway_proxy.update(
+        {
+            "bind_host": get_http_bind_host(),
+            "host": get_http_connect_host(),
+            "port": get_http_port(),
+            "path": get_http_path(),
+        }
+    )
     raw_instances = registry.get_instances() if gateway.get("alive") else []
     instances = [dict(i) for i in raw_instances]
     return {
         "gateway": gateway,
-        "proxy": proxy,
+        "gateway_proxy": gateway_proxy,
         "instances": instances,
         "count": len(instances),
         "gateway_internal": {
@@ -40,22 +48,16 @@ def gateway_status_payload() -> dict[str, Any]:
             "host": get_gateway_internal_host(),
             "port": get_gateway_internal_port(),
         },
-        "http_proxy": {
-            "bind_host": get_http_bind_host(),
-            "host": get_http_connect_host(),
-            "port": get_http_port(),
-            "path": get_http_path(),
-        },
     }
 
 
 def ensure_gateway_running(startup_timeout: float = 3.0) -> dict[str, Any]:
     ok = registry.ensure_registry_server(startup_timeout=startup_timeout)
-    proxy_ok = registry.ensure_http_proxy_running(startup_timeout=startup_timeout)
+    proxy_ok = registry.ensure_gateway_proxy_running(startup_timeout=startup_timeout)
     payload = gateway_status_payload()
     payload["ok"] = bool(ok)
     payload["proxy_ok"] = bool(
-        proxy_ok or not payload.get("proxy", {}).get("enabled", True)
+        proxy_ok or not payload.get("gateway_proxy", {}).get("enabled", True)
     )
     if not payload["ok"]:
         return error_payload(

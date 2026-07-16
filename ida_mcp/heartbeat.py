@@ -5,7 +5,7 @@ import time
 from ida_mcp import registry
 
 _hb_thread: threading.Thread | None = (
-    None  # heartbeat/keepalive thread (monitors coordinator state and periodically refreshes registration)
+    None  # heartbeat/keepalive thread (monitors gateway state and periodically refreshes registration)
 )
 _hb_stop = threading.Event()  # heartbeat thread stop signal (set in stop_server)
 _last_register_ts: float | None = (
@@ -131,7 +131,7 @@ def reset_heartbeat_failure_tracking(log_recovery: bool = False) -> None:
 
 
 def _heartbeat_loop():
-    """Background heartbeat: periodically verify the coordinator is still reachable and
+    """Background heartbeat: periodically verify the gateway is still reachable and
     this instance's record exists, otherwise re-register.
     """
     global _last_register_ts
@@ -182,7 +182,7 @@ def _heartbeat_loop():
             found = any(e.get("pid") == pid for e in inst_list)
             if not found:
                 need_register = True
-        # no longer perform "time-driven forced refresh" by default; only re-register when instance is missing or coordinator is rebuilt.
+        # no longer perform "time-driven forced refresh" by default; only re-register when instance is missing or gateway is rebuilt.
         if (
             not need_register
             and _ENABLE_PERIODIC_REFRESH

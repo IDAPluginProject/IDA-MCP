@@ -106,7 +106,7 @@
 }
 ```
 
-proxy/control 面的包装错误常见格式：
+gateway/control 面的包装错误常见格式：
 
 ```json
 {
@@ -393,13 +393,13 @@ Authorization: Bearer <gateway_token>
 
 | Method | Path | Request Body | Expected Response |
 | --- | --- | --- | --- |
-| `GET` | `/healthz` | none | `{ok, gateway, proxy, instance_count, started_at}` |
+| `GET` | `/healthz` | none | `{ok, gateway, gateway_proxy, instance_count, started_at}` |
 | `GET` | `/instances` | none | 当前注册实例数组 |
 | `GET` | `/current_instance` | none | `{port}` |
 | `GET` | `/debug` | none | `{enabled}` |
 | `POST` | `/debug` | `{"enable": true}` 或 `{"enabled": true}` | `{status:"ok", enabled}` |
-| `GET` | `/proxy_status` | none | `{enabled, running, url, host, bind_host, port, path, last_error}` |
-| `POST` | `/ensure_proxy` | none | 与 `/proxy_status` 相同 |
+| `GET` | `/gateway_proxy_status` | none | `{enabled, running, url, host, bind_host, port, path, last_error}` |
+| `POST` | `/ensure_gateway_proxy` | none | 与 `/gateway_proxy_status` 相同 |
 | `POST` | `/shutdown` | `{"force": false}` | 成功 `{status:"ok", message, forced, instance_count}`；存在实例且未 `force` 时 HTTP 409 |
 | `POST` | `/register` | `{"pid":..., "port":..., ...}` | `{status:"ok"}`；缺字段时 HTTP 400 |
 | `POST` | `/deregister` | `{"pid":...}` | `{status:"ok"}`；缺字段时 HTTP 400 |
@@ -435,7 +435,10 @@ Authorization: Bearer <gateway_token>
 
 ```json
 {
-  "error": "instance not found"
+  "error": {
+    "code": "instance_not_found",
+    "message": "instance not found"
+  }
 }
 ```
 

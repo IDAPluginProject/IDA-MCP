@@ -58,7 +58,7 @@ IDA's Python environment:
 ```
 
 Open a database in IDA and wait for initial analysis. The plugin starts its
-per-instance MCP server automatically when HTTP transport is enabled.
+per-instance MCP server automatically when the gateway is enabled.
 
 ## Gateway And CLI
 
@@ -86,11 +86,9 @@ Tests require a running gateway and at least one registered IDA instance.
 ```bash
 python test/test.py
 python test/test.py --core --analysis
-python test/test.py --transport=http --analysis
 
 pytest -m "core or analysis"
 pytest -m "not debug"
-pytest --transport=http
 ```
 
 The `debug` marker is excluded by default because it requires an active

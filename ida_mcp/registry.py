@@ -27,17 +27,17 @@ from .config import (
     get_http_path,
     get_http_port,
     get_request_timeout,
-    is_http_enabled,
+    is_gateway_enabled,
 )
 
 
 _registry_start_lock = threading.Lock()
-_http_proxy_start_lock = threading.Lock()
+_gateway_proxy_start_lock = threading.Lock()
 _self_pid = os.getpid()
 _deregister_registered = False
 _launch_status: Dict[str, Dict[str, Any]] = {
     "registry_server": {},
-    "http_proxy": {},
+    "gateway_proxy": {},
 }
 
 from .utils import display_path as _display_path
@@ -53,8 +53,8 @@ def _gateway_internal_alive(timeout: float = 0.3) -> bool:
         return False
 
 
-def _http_proxy_alive(timeout: float = 0.3) -> bool:
-    status = _request_json("GET", "/proxy_status", timeout=timeout, ensure_server=False)
+def _gateway_proxy_alive(timeout: float = 0.3) -> bool:
+    status = _request_json("GET", "/gateway_proxy_status", timeout=timeout, ensure_server=False)
     return bool(isinstance(status, dict) and status.get("running"))
 
 
@@ -249,33 +249,33 @@ def ensure_registry_server(startup_timeout: float = 3.0) -> bool:
         return False
 
 
-def ensure_http_proxy_running(startup_timeout: float = 3.0) -> bool:
-    """Ensure the merged gateway process has brought the HTTP proxy online."""
-    if not is_http_enabled():
-        _set_launch_status("http_proxy", requested=False, enabled=False, alive=False)
+def ensure_gateway_proxy_running(startup_timeout: float = 3.0) -> bool:
+    """Ensure the merged gateway process has brought the MCP proxy online."""
+    if not is_gateway_enabled():
+        _set_launch_status("gateway_proxy", requested=False, enabled=False, alive=False)
         return False
-    if _http_proxy_alive():
+    if _gateway_proxy_alive():
         _set_launch_status(
-            "http_proxy",
+            "gateway_proxy",
             requested=True,
             enabled=True,
             alive=True,
-            python=_launch_status.get("http_proxy", {}).get("python"),
-            log=_launch_status.get("http_proxy", {}).get("log"),
+            python=_launch_status.get("gateway_proxy", {}).get("python"),
+            log=_launch_status.get("gateway_proxy", {}).get("log"),
             last_error=None,
         )
         return True
 
-    with _http_proxy_start_lock:
-        if _http_proxy_alive():
+    with _gateway_proxy_start_lock:
+        if _gateway_proxy_alive():
             _set_launch_status(
-                "http_proxy", requested=True, enabled=True, alive=True, last_error=None
+                "gateway_proxy", requested=True, enabled=True, alive=True, last_error=None
             )
             return True
 
         if not ensure_registry_server():
             _set_launch_status(
-                "http_proxy",
+                "gateway_proxy",
                 requested=True,
                 enabled=True,
                 alive=False,
@@ -288,7 +288,7 @@ def ensure_http_proxy_running(startup_timeout: float = 3.0) -> bool:
         gateway_status = dict(_launch_status.get("registry_server", {}))
         log_path = gateway_status.get("log") or _launch_log_path("registry_server")
         _set_launch_status(
-            "http_proxy",
+            "gateway_proxy",
             requested=True,
             enabled=True,
             python=gateway_status.get("python"),
@@ -298,11 +298,11 @@ def ensure_http_proxy_running(startup_timeout: float = 3.0) -> bool:
         )
 
         status = _request_json(
-            "POST", "/ensure_proxy", {}, timeout=1.0, ensure_server=False
+            "POST", "/ensure_gateway_proxy", {}, timeout=1.0, ensure_server=False
         )
         if isinstance(status, dict):
             _set_launch_status(
-                "http_proxy",
+                "gateway_proxy",
                 enabled=bool(status.get("enabled", True)),
                 alive=bool(status.get("running", False)),
                 log=log_path,
@@ -311,18 +311,18 @@ def ensure_http_proxy_running(startup_timeout: float = 3.0) -> bool:
 
         deadline = time.monotonic() + max(startup_timeout, 8.0)
         while time.monotonic() < deadline:
-            if _http_proxy_alive():
-                _set_launch_status("http_proxy", alive=True, last_error=None)
+            if _gateway_proxy_alive():
+                _set_launch_status("gateway_proxy", alive=True, last_error=None)
                 return True
             time.sleep(0.1)
-        status = _request_json("GET", "/proxy_status", ensure_server=False)
+        status = _request_json("GET", "/gateway_proxy_status", ensure_server=False)
         last_error = None
         if isinstance(status, dict):
             last_error = status.get("last_error")
         _set_launch_status(
-            "http_proxy",
+            "gateway_proxy",
             alive=False,
-            last_error=last_error or "http proxy did not become reachable in time",
+            last_error=last_error or "gateway proxy did not become reachable in time",
         )
         return False
 
@@ -416,7 +416,7 @@ def register_pending_instance(
     lifecycle_state: str = "starting",
 ) -> bool:
     """Register a launched-but-not-ready IDA process with the gateway."""
-    if not is_http_enabled():
+    if not is_gateway_enabled():
         return False
     if not ensure_registry_server():
         return False
@@ -469,7 +469,7 @@ def update_instance_status(
 
 def init_and_register(port: int, input_file: str | None, idb_path: str | None) -> None:
     """Register the current IDA instance with the standalone gateway."""
-    if not is_http_enabled():
+    if not is_gateway_enabled():
         return
     if not ensure_registry_server():
         raise RuntimeError(
@@ -590,14 +590,14 @@ def shutdown_gateway(force: bool = False, timeout: Optional[float] = None) -> di
     return result
 
 
-def get_http_proxy_status() -> dict:
-    status = _request_json("GET", "/proxy_status", ensure_server=False)
-    merged = dict(_launch_status.get("http_proxy", {}))
+def get_gateway_proxy_status() -> dict:
+    status = _request_json("GET", "/gateway_proxy_status", ensure_server=False)
+    merged = dict(_launch_status.get("gateway_proxy", {}))
     if isinstance(status, dict):
         merged.update(
             {
-                "enabled": status.get("enabled", is_http_enabled()),
-                "alive": status.get("running", _http_proxy_alive()),
+                "enabled": status.get("enabled", is_gateway_enabled()),
+                "alive": status.get("running", _gateway_proxy_alive()),
                 "url": status.get("url"),
                 "host": status.get("host"),
                 "port": status.get("port"),
@@ -606,8 +606,8 @@ def get_http_proxy_status() -> dict:
             }
         )
     else:
-        merged["alive"] = _http_proxy_alive()
-        merged.setdefault("enabled", is_http_enabled())
+        merged["alive"] = _gateway_proxy_alive()
+        merged.setdefault("enabled", is_gateway_enabled())
     return merged
 
 

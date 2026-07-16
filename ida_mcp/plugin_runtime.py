@@ -14,7 +14,7 @@ from ida_mcp.config import (
     get_http_path,
     get_http_port,
     get_ida_default_port,
-    is_http_enabled,
+    is_gateway_enabled,
 )
 from ida_mcp.heartbeat import (
     clear_main_thread_tick,
@@ -34,7 +34,7 @@ from ida_mcp.instance_server import (
     shutdown_server as _instance_shutdown_server,
     start_instance_server_threads,
 )
-from ida_mcp.runtime import start_http_proxy_if_gateway
+from ida_mcp.runtime import start_gateway_proxy_if_enabled
 
 _stop_lock = threading.Lock()
 _tick_thread: threading.Thread | None = None
@@ -164,36 +164,36 @@ def _ensure_gateway_ready_for_startup() -> bool:
     return False
 
 
-def _register_with_coordinator(port: int) -> bool:
-    """Register the current instance metadata with the coordinator."""
+def _register_with_gateway(port: int) -> bool:
+    """Register the current instance metadata with the gateway."""
     if _host_prime_paths:
         _host_prime_paths()
     cached_input_file, cached_idb_path = get_path_cache()
     try:
         registry.init_and_register(port, cached_input_file, cached_idb_path)
-        http_proxy_ready = start_http_proxy_if_gateway()
+        gateway_proxy_ready = start_gateway_proxy_if_enabled()
         reset_heartbeat_failure_tracking()
         _info(
             f"Registered instance at port={port} pid={os.getpid()} input='{cached_input_file}' idb='{cached_idb_path}'"
         )
-        if http_proxy_ready:
+        if gateway_proxy_ready:
             _info(
                 f"HTTP MCP proxy listening on http://{get_http_bind_host()}:{get_http_port()}{get_http_path()}"
             )
-        elif is_http_enabled():
-            proxy_status = getattr(registry, "get_http_proxy_status", lambda: {})()
-            if not isinstance(proxy_status, dict):
-                proxy_status = {}
+        elif is_gateway_enabled():
+            gateway_proxy_status = getattr(registry, "get_gateway_proxy_status", lambda: {})()
+            if not isinstance(gateway_proxy_status, dict):
+                gateway_proxy_status = {}
             status_parts = []
-            if proxy_status.get("python"):
-                status_parts.append(f"python={proxy_status['python']}")
-            if proxy_status.get("log"):
-                status_parts.append(f"log={proxy_status['log']}")
-            if proxy_status.get("last_error"):
-                status_parts.append(f"last_error={proxy_status['last_error']}")
+            if gateway_proxy_status.get("python"):
+                status_parts.append(f"python={gateway_proxy_status['python']}")
+            if gateway_proxy_status.get("log"):
+                status_parts.append(f"log={gateway_proxy_status['log']}")
+            if gateway_proxy_status.get("last_error"):
+                status_parts.append(f"last_error={gateway_proxy_status['last_error']}")
             suffix = f" ({', '.join(status_parts)})" if status_parts else ""
-            _warn(f"HTTP MCP proxy launch requested but not yet reachable{suffix}")
-        gateway_suffix = get_http_path() if is_http_enabled() else ""
+            _warn(f"Gateway MCP proxy launch requested but not yet reachable{suffix}")
+        gateway_suffix = get_http_path() if is_gateway_enabled() else ""
         _info(
             f"Gateway listening on {get_http_bind_host()}:{get_http_port()}{gateway_suffix}"
         )
@@ -261,7 +261,7 @@ def start_server_async(host: str, port: int):
 
 configure_state_getters(active_port_getter=get_active_port, uv_server_getter=get_uv_server)
 configure_runtime_callbacks(
-    register_with_coordinator_fn=_register_with_coordinator,
+    register_with_gateway_fn=_register_with_gateway,
     start_tick_thread_fn=start_tick_thread,
     start_heartbeat_thread_fn=start_heartbeat_thread,
     stop_heartbeat_thread_fn=stop_heartbeat_thread,

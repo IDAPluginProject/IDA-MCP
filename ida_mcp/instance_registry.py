@@ -30,8 +30,8 @@ _lock = threading.RLock()
 _current_instance_port: Optional[int] = None
 _call_locks: Dict[int, asyncio.Lock] = {}
 _CALL_LOCKS_GUARD = threading.Lock()
-_proxy_ready = False
-_proxy_last_error: Optional[str] = None
+_gateway_proxy_ready = False
+_gateway_proxy_last_error: Optional[str] = None
 _gateway_started_at = time.time()
 
 INSTANCE_HEALTH_HEALTHY = "healthy"
@@ -243,9 +243,11 @@ def _preflight_instance_route(entry: Dict[str, Any]) -> Optional[JSONResponse]:
     if effective_state in {"starting", "analyzing"}:
         return JSONResponse(
             {
-                "error": f"Instance on port {port} is not ready yet ({effective_state})",
-                "error_code": "instance_not_ready",
-                "error_details": {"port": port},
+                "error": {
+                    "code": "instance_not_ready",
+                    "message": f"Instance on port {port} is not ready yet ({effective_state})",
+                    "details": {"port": port},
+                },
                 "effective_state": effective_state,
             },
             status_code=503,
@@ -253,9 +255,11 @@ def _preflight_instance_route(entry: Dict[str, Any]) -> Optional[JSONResponse]:
     if effective_state == INSTANCE_HEALTH_UNRESPONSIVE:
         return JSONResponse(
             {
-                "error": f"Instance on port {port} is unresponsive",
-                "error_code": "instance_unresponsive",
-                "error_details": {"port": port},
+                "error": {
+                    "code": "instance_unresponsive",
+                    "message": f"Instance on port {port} is unresponsive",
+                    "details": {"port": port},
+                },
                 "effective_state": effective_state,
                 "main_thread_stale": bool(snapshot.get("main_thread_stale")),
             },
@@ -330,16 +334,16 @@ def _classify_call_exception(exc: Exception) -> tuple[str, int, str]:
     return INSTANCE_HEALTH_ERROR, 500, "backend"
 
 
-def _proxy_status() -> Dict[str, Any]:
+def _gateway_proxy_status() -> Dict[str, Any]:
     return {
         "enabled": True,
-        "running": _proxy_ready,
+        "running": _gateway_proxy_ready,
         "url": f"http://{GATEWAY_CONNECT_HOST}:{GATEWAY_PORT}{MCP_PATH}",
         "host": GATEWAY_CONNECT_HOST,
         "bind_host": GATEWAY_BIND_HOST,
         "port": GATEWAY_PORT,
         "path": MCP_PATH,
         "last_error": None
-        if _proxy_ready
-        else (_proxy_last_error or "gateway MCP route not ready"),
+        if _gateway_proxy_ready
+        else (_gateway_proxy_last_error or "gateway MCP route not ready"),
     }

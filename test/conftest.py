@@ -3,7 +3,7 @@
 测试框架设计：
 1. gateway_internal_available - 检查 gateway 内部 API 是否运行
 2. instance_port - 获取可用 IDA 实例端口
-3. tool_caller - 通过 HTTP proxy 调用工具
+3. tool_caller - 通过 gateway proxy 调用工具
 4. 前置信息 fixtures（session 级别缓存）:
    - first_function - 获取第一个函数信息
    - first_string - 获取第一个字符串信息
@@ -13,7 +13,6 @@
 
 运行方式：
     pytest
-    pytest --transport=http
 """
 
 import sys
@@ -43,13 +42,6 @@ from typing import Any, Optional, Dict, List, Union
 def pytest_addoption(parser):
     """添加命令行选项。"""
     parser.addoption(
-        "--transport",
-        action="store",
-        default="http",
-        choices=["http"],
-        help="Transport mode to test: http (default: http)",
-    )
-    parser.addoption(
         "--allow-destructive-lifecycle",
         action="store_true",
         default=False,
@@ -66,20 +58,18 @@ GATEWAY_INTERNAL_HOST = "127.0.0.1"
 GATEWAY_INTERNAL_PORT = 11338
 GATEWAY_INTERNAL_BASE_PATH = "/internal"
 
-# HTTP 代理地址
-HTTP_PROXY_HOST = "127.0.0.1"
-HTTP_PROXY_PORT = 11338
-HTTP_PROXY_PATH = "/mcp"
+# Gateway MCP proxy 地址
+GATEWAY_PROXY_HOST = "127.0.0.1"
+GATEWAY_PROXY_PORT = 11338
+GATEWAY_PROXY_PATH = "/mcp"
 
 
 # ============================================================================
 # API 调用日志
 # ============================================================================
 
-# 按传输模式分开的日志
-_api_call_logs: Dict[str, List[Dict[str, Any]]] = {
-    "http": [],
-}
+# API 调用日志
+_api_call_logs: List[Dict[str, Any]] = []
 
 # 日志目录路径
 _LOG_DIR = str(Path(__file__).resolve().parent.parent / ".artifacts" / "api_logs")
@@ -181,7 +171,6 @@ def _get_api_category(tool_name: str) -> str:
 
 
 def _log_api_call(
-    transport: str,
     tool_name: str,
     params: dict,
     port: Optional[int],
@@ -189,10 +178,10 @@ def _log_api_call(
     duration_ms: float,
 ) -> None:
     """记录 API 调用。"""
-    _api_call_logs[transport].append(
+    _api_call_logs.append(
         {
             "timestamp": datetime.now().isoformat(),
-            "transport": transport,
+            "endpoint": "gateway",
             "category": _get_api_category(tool_name),
             "tool": tool_name,
             "params": params,
@@ -211,58 +200,49 @@ def _save_api_log() -> None:
         return
 
     all_files = []
-    total_calls = 0
-    stats_by_transport: Dict[str, Dict[str, int]] = {}
+    total_calls = len(_api_call_logs)
+    stats_by_category: Dict[str, int] = {}
 
-    for transport, calls in _api_call_logs.items():
-        if not calls:
-            continue
+    # 按分类组织
+    categorized: Dict[str, List[Dict[str, Any]]] = {}
+    for call in _api_call_logs:
+        category = call.get("category", "other")
+        if category not in categorized:
+            categorized[category] = []
+        categorized[category].append(call)
 
-        total_calls += len(calls)
-        stats_by_transport[transport] = {}
+    # 保存各分类文件
+    for category, cat_calls in categorized.items():
+        filename = f"{category}.json"
+        log_file = os.path.join(_LOG_DIR, filename)
 
-        # 按分类组织
-        categorized: Dict[str, List[Dict[str, Any]]] = {}
-        for call in calls:
-            category = call.get("category", "other")
-            if category not in categorized:
-                categorized[category] = []
-            categorized[category].append(call)
+        try:
+            with open(log_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "endpoint": "gateway",
+                        "category": category,
+                        "generated_at": datetime.now().isoformat(),
+                        "total_calls": len(cat_calls),
+                        "calls": cat_calls,
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                )
 
-        # 保存各分类文件
-        for category, cat_calls in categorized.items():
-            # 文件名格式: {transport}_{category}.json
-            filename = f"{transport}_{category}.json"
-            log_file = os.path.join(_LOG_DIR, filename)
-
-            try:
-                with open(log_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "transport": transport,
-                            "category": category,
-                            "generated_at": datetime.now().isoformat(),
-                            "total_calls": len(cat_calls),
-                            "calls": cat_calls,
-                        },
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        default=str,
-                    )
-
-                all_files.append(filename)
-                stats_by_transport[transport][category] = len(cat_calls)
-            except Exception:
-                pass
+            all_files.append(filename)
+            stats_by_category[category] = len(cat_calls)
+        except Exception:
+            pass
 
         # 保存汇总文件
     try:
         # 检查是否存在 uri.json（由 test_resources.py 生成）
-        for prefix in ["http_", ""]:
-            uri_file = os.path.join(_LOG_DIR, f"{prefix}uri.json")
-            if os.path.exists(uri_file):
-                all_files.append(f"{prefix}uri.json")
+        uri_file = os.path.join(_LOG_DIR, "uri.json")
+        if os.path.exists(uri_file):
+            all_files.append("uri.json")
 
         summary_file = os.path.join(_LOG_DIR, "_summary.json")
         with open(summary_file, "w", encoding="utf-8") as f:
@@ -270,7 +250,7 @@ def _save_api_log() -> None:
                 {
                     "generated_at": datetime.now().isoformat(),
                     "total_calls": total_calls,
-                    "stats_by_transport": stats_by_transport,
+                    "stats_by_category": stats_by_category,
                     "files": sorted(set(all_files)),
                 },
                 f,
@@ -281,12 +261,10 @@ def _save_api_log() -> None:
 
         if total_calls > 0:
             print(f"\n[API Log] Saved {total_calls} calls to {_LOG_DIR}/")
-            for transport, stats in stats_by_transport.items():
-                if stats:
-                    files_info = ", ".join(
-                        f"{cat} ({cnt})" for cat, cnt in sorted(stats.items())
-                    )
-                    print(f"[API Log] {transport}: {files_info}")
+            files_info = ", ".join(
+                f"{cat} ({cnt})" for cat, cnt in sorted(stats_by_category.items())
+            )
+            print(f"[API Log] gateway: {files_info}")
     except Exception as e:
         print(f"\n[API Log] Failed to save summary: {e}")
 
@@ -318,8 +296,8 @@ def http_get(url: str, timeout: float = 5.0) -> Any:
         return {"error": str(e)}
 
 
-def call_tool_http(tool_name: str, params: dict, port: Optional[int] = None) -> Any:
-    """通过 HTTP 代理调用 IDA 工具。"""
+def call_tool_gateway(tool_name: str, params: dict, port: Optional[int] = None) -> Any:
+    """通过 gateway proxy 调用 IDA 工具。"""
     import time
 
     start_time = time.perf_counter()
@@ -328,7 +306,7 @@ def call_tool_http(tool_name: str, params: dict, port: Optional[int] = None) -> 
         from fastmcp import Client
 
         async def _call():
-            url = f"http://{HTTP_PROXY_HOST}:{HTTP_PROXY_PORT}{HTTP_PROXY_PATH}"
+            url = f"http://{GATEWAY_PROXY_HOST}:{GATEWAY_PROXY_PORT}{GATEWAY_PROXY_PATH}"
             async with Client(url, timeout=30) as client:
                 call_params = dict(params)
                 if port and tool_name not in _NO_PORT_INJECTION_TOOLS:
@@ -374,26 +352,26 @@ def call_tool_http(tool_name: str, params: dict, port: Optional[int] = None) -> 
     duration_ms = (time.perf_counter() - start_time) * 1000
 
     # 记录 API 调用
-    _log_api_call("http", tool_name, params, port, data, duration_ms)
+    _log_api_call(tool_name, params, port, data, duration_ms)
 
     return data
 
 
 # ============================================================================
-# 传输模式检测
+# Gateway 检测
 # ============================================================================
 
 
-def _is_http_proxy_available() -> bool:
-    """检查 HTTP 代理是否可用。"""
+def _is_gateway_proxy_available() -> bool:
+    """检查 gateway proxy 是否可用。"""
     try:
-        url = f"http://{HTTP_PROXY_HOST}:{HTTP_PROXY_PORT}{HTTP_PROXY_PATH}"
+        url = f"http://{GATEWAY_PROXY_HOST}:{GATEWAY_PROXY_PORT}{GATEWAY_PROXY_PATH}"
         # 尝试连接
         import socket
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
-        result = sock.connect_ex((HTTP_PROXY_HOST, HTTP_PROXY_PORT))
+        result = sock.connect_ex((GATEWAY_PROXY_HOST, GATEWAY_PROXY_PORT))
         sock.close()
         return result == 0
     except Exception:
@@ -469,18 +447,6 @@ def _instance_matches_sample(instance: dict, sample_name: str) -> bool:
 # ============================================================================
 
 
-def pytest_generate_tests(metafunc):
-    """HTTP is the only supported transport."""
-    if "transport_mode" in metafunc.fixturenames:
-        metafunc.parametrize("transport_mode", ["http"], scope="session")
-
-
-@pytest.fixture(scope="session")
-def transport_mode():
-    """获取当前测试的传输模式。"""
-    return "http"
-
-
 @pytest.fixture(scope="session")
 def gateway_internal_available():
     """检查 gateway internal API 是否可用。"""
@@ -490,10 +456,10 @@ def gateway_internal_available():
 
 
 @pytest.fixture(scope="session")
-def http_proxy_available():
-    """检查 HTTP 代理是否可用。"""
-    if not _is_http_proxy_available():
-        pytest.skip(f"HTTP proxy not available at {HTTP_PROXY_HOST}:{HTTP_PROXY_PORT}")
+def gateway_proxy_available():
+    """检查 gateway proxy 是否可用。"""
+    if not _is_gateway_proxy_available():
+        pytest.skip(f"Gateway proxy not available at {GATEWAY_PROXY_HOST}:{GATEWAY_PROXY_PORT}")
     return True
 
 
@@ -578,14 +544,14 @@ def baseline_string(complex_baseline, strings_cache):
 @pytest.fixture
 def tool_caller(instance_port):
     """返回 HTTP 工具调用函数。"""
-    if not _is_http_proxy_available():
-        pytest.skip("HTTP proxy not available")
+    if not _is_gateway_proxy_available():
+        pytest.skip("Gateway proxy not available")
 
     def caller(tool_name: str, params: Optional[dict] = None, **kwargs) -> Any:
         call_params = {**(params or {}), **kwargs}
         route_port = call_params.get("port")
         selected_port = route_port if isinstance(route_port, int) else instance_port
-        return call_tool_http(tool_name, call_params, selected_port)
+        return call_tool_gateway(tool_name, call_params, selected_port)
 
     return caller
 
@@ -598,7 +564,7 @@ def tool_caller(instance_port):
 @pytest.fixture(scope="session")
 def metadata(instance_port) -> Dict[str, Any]:
     """获取 IDB 元数据（缓存）。"""
-    result = call_tool_http("get_metadata", {}, instance_port)
+    result = call_tool_gateway("get_metadata", {}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot get metadata: {result['error']}")
     return result
@@ -608,7 +574,7 @@ def metadata(instance_port) -> Dict[str, Any]:
 def functions_cache(instance_port) -> List[Dict[str, Any]]:
     """获取函数列表缓存（前 100 个）。"""
     # 显式传递所有参数以兼容签名问题
-    result = call_tool_http(
+    result = call_tool_gateway(
         "list_functions", {"offset": 0, "count": 100}, instance_port
     )
     if "error" in result:
@@ -620,7 +586,7 @@ def functions_cache(instance_port) -> List[Dict[str, Any]]:
 def strings_cache(instance_port) -> List[Dict[str, Any]]:
     """获取字符串列表缓存（前 100 个）。"""
     # 显式传递所有参数以兼容签名问题
-    result = call_tool_http("list_strings", {"offset": 0, "count": 100}, instance_port)
+    result = call_tool_gateway("list_strings", {"offset": 0, "count": 100}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot list strings: {result['error']}")
     return result.get("items", [])
@@ -630,7 +596,7 @@ def strings_cache(instance_port) -> List[Dict[str, Any]]:
 def globals_cache(instance_port) -> List[Dict[str, Any]]:
     """获取全局变量列表缓存。"""
     # 工具名为 "list_globals"（与 IDA API 一致）
-    result = call_tool_http("list_globals", {"offset": 0, "count": 1000}, instance_port)
+    result = call_tool_gateway("list_globals", {"offset": 0, "count": 1000}, instance_port)
     if "error" in result:
         pytest.skip(f"Cannot list globals: {result['error']}")
     return result.get("items", [])
@@ -639,7 +605,7 @@ def globals_cache(instance_port) -> List[Dict[str, Any]]:
 @pytest.fixture(scope="session")
 def entry_points_cache(instance_port) -> List[Dict[str, Any]]:
     """获取入口点缓存。"""
-    result = call_tool_http("get_entry_points", {}, instance_port)
+    result = call_tool_gateway("get_entry_points", {}, instance_port)
     if "error" in result:
         return []  # 入口点可能为空，不跳过测试
     return result.get("items", [])
@@ -648,7 +614,7 @@ def entry_points_cache(instance_port) -> List[Dict[str, Any]]:
 @pytest.fixture(scope="session")
 def local_types_cache(instance_port) -> List[Dict[str, Any]]:
     """获取本地类型缓存。"""
-    result = call_tool_http("list_local_types", {}, instance_port)
+    result = call_tool_gateway("list_local_types", {}, instance_port)
     if "error" in result:
         return []  # 类型可能为空，不跳过测试
     return result.get("items", [])

@@ -62,7 +62,7 @@ def _exit_code_from_payload(payload: dict[str, Any], default: int = EXIT_OK) -> 
 
 def _print_gateway_status(payload: dict[str, Any]) -> None:
     gateway = payload.get("gateway", {})
-    proxy = payload.get("proxy", {})
+    gateway_proxy = payload.get("gateway_proxy", {})
     gateway_internal = payload.get("gateway_internal", {})
     gateway_host = gateway_internal.get("bind_host") or gateway_internal.get("host")
     gateway_port = gateway_internal.get("port")
@@ -74,16 +74,15 @@ def _print_gateway_status(payload: dict[str, Any]) -> None:
         print(f"Gateway log: {_display_path(gateway['log'])}")
     if gateway.get("last_error"):
         print(f"Gateway error: {gateway['last_error']}")
-    http_proxy = payload["http_proxy"]
-    proxy_host = http_proxy.get("bind_host") or http_proxy.get("host")
-    proxy_port = http_proxy.get("port")
-    proxy_path = http_proxy.get("path")
+    proxy_host = gateway_proxy.get("bind_host") or gateway_proxy.get("host")
+    proxy_port = gateway_proxy.get("port")
+    proxy_path = gateway_proxy.get("path")
     print(
-        f"HTTP proxy: {'running' if proxy.get('alive') else 'stopped'} "
+        f"Gateway proxy: {'running' if gateway_proxy.get('alive') else 'stopped'} "
         f"at {proxy_host}:{proxy_port}{proxy_path}"
     )
-    if proxy.get("last_error"):
-        print(f"HTTP proxy error: {proxy['last_error']}")
+    if gateway_proxy.get("last_error"):
+        print(f"Gateway proxy error: {gateway_proxy['last_error']}")
     print(f"Registered instances: {payload.get('count', 0)}")
 
 

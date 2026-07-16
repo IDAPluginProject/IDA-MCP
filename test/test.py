@@ -17,18 +17,13 @@ Usage:
     python test/test.py --resources     # Resources module (MCP resources)
     python test/test.py --lifecycle     # Lifecycle module (start/shutdown IDA)
 
-    # Transport mode:
-    python test/test.py --transport=http     # Test HTTP mode (default)
-
     # Combined usage:
     python test/test.py --core --analysis    # Run core and analysis
-    python test/test.py --transport=http --analysis  # Run analysis in HTTP mode
 
     # Direct pytest usage:
     pytest -m core                      # Run core module only
     pytest -m "core or analysis"        # Run core and analysis
     pytest -m "not debug"               # Exclude debug module
-    pytest --transport=http             # Test HTTP mode
     pytest test/test_core.py              # Run specified file
 """
 import sys
@@ -78,8 +73,8 @@ def check_instances_available() -> bool:
         return False
 
 
-def check_http_proxy() -> bool:
-    """Check if HTTP proxy is available."""
+def check_gateway_proxy() -> bool:
+    """Check if the gateway MCP proxy is available."""
     import socket
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -132,28 +127,19 @@ def run_tests(args: list | None = None):
     # Collect modules to run
     selected_modules: list[str] = []
     run_all = False
-    transport_mode = "http"
     remaining_args: list[str] = []
 
     if args:
         for arg in args:
             if arg == "--all":
                 run_all = True
-            elif arg.startswith("--transport="):
-                transport_mode = arg.split("=", 1)[1]
-                if transport_mode != "http":
-                    print("ERROR: only HTTP transport is supported. Use --transport=http.")
-                    return 1
             elif arg.startswith("--") and arg[2:] in MODULES:
                 selected_modules.append(arg[2:])
             else:
                 remaining_args.append(arg)
 
-    # 添加 transport 参数
-    pytest_args.extend([f"--transport={transport_mode}"])
-
-    if not check_http_proxy():
-        print(f"WARNING: HTTP proxy not available at {GATEWAY_HOST}:{GATEWAY_PORT}")
+    if not check_gateway_proxy():
+        print(f"WARNING: Gateway proxy not available at {GATEWAY_HOST}:{GATEWAY_PORT}")
         print("Please check config.conf and restart IDA plugin.")
         return 1
 
@@ -170,7 +156,6 @@ def run_tests(args: list | None = None):
     pytest_args.extend(remaining_args)
 
     # Show tests to be run
-    print(f"Transport mode: {transport_mode}")
     print(f"Running: pytest {' '.join(pytest_args[1:])}")
     print()
 

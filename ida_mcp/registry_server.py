@@ -33,10 +33,10 @@ if __package__ in {None, ""}:
         _debug_get,
         _debug_post,
         _deregister_handler,
-        _ensure_proxy_handler,
+        _ensure_gateway_proxy_handler,
         _healthz,
         _instances_handler,
-        _proxy_status_handler,
+        _gateway_proxy_status_handler,
         _register_handler,
         _select_instance_handler,
         _shutdown_handler,
@@ -59,10 +59,10 @@ else:
         _debug_get,
         _debug_post,
         _deregister_handler,
-        _ensure_proxy_handler,
+        _ensure_gateway_proxy_handler,
         _healthz,
         _instances_handler,
-        _proxy_status_handler,
+        _gateway_proxy_status_handler,
         _register_handler,
         _select_instance_handler,
         _shutdown_handler,
@@ -101,8 +101,8 @@ def _build_internal_app() -> Starlette:
             Route("/current_instance", _current_instance_handler, methods=["GET"]),
             Route("/debug", _debug_get, methods=["GET"]),
             Route("/debug", _debug_post, methods=["POST"]),
-            Route("/proxy_status", _proxy_status_handler, methods=["GET"]),
-            Route("/ensure_proxy", _ensure_proxy_handler, methods=["POST"]),
+            Route("/gateway_proxy_status", _gateway_proxy_status_handler, methods=["GET"]),
+            Route("/ensure_gateway_proxy", _ensure_gateway_proxy_handler, methods=["POST"]),
             Route("/shutdown", _shutdown_handler, methods=["POST"]),
             Route("/register", _register_handler, methods=["POST"]),
             Route("/update_instance", _update_instance_handler, methods=["POST"]),
@@ -118,23 +118,23 @@ def _build_app() -> Starlette:
 
     @asynccontextmanager
     async def gateway_lifespan(app: Starlette):
-        instance_registry._proxy_ready = False
-        instance_registry._proxy_last_error = None
+        instance_registry._gateway_proxy_ready = False
+        instance_registry._gateway_proxy_last_error = None
         try:
             # FastMCP's Streamable HTTP session manager must run in the parent
             # Starlette lifespan so request scopes inherit the initialized state.
             if hasattr(mcp_app, "lifespan"):
                 async with mcp_app.lifespan(app):
-                    instance_registry._proxy_ready = True
+                    instance_registry._gateway_proxy_ready = True
                     yield
             else:
-                instance_registry._proxy_ready = True
+                instance_registry._gateway_proxy_ready = True
                 yield
         except Exception as exc:
-            instance_registry._proxy_last_error = str(exc)
+            instance_registry._gateway_proxy_last_error = str(exc)
             raise
         finally:
-            instance_registry._proxy_ready = False
+            instance_registry._gateway_proxy_ready = False
 
     return Starlette(
         routes=[

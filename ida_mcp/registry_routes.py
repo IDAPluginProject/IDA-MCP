@@ -92,11 +92,13 @@ def _error_response(
     **details: Any,
 ) -> JSONResponse:
     payload: dict[str, Any] = {
-        "error": message,
-        "error_code": code,
+        "error": {
+            "code": code,
+            "message": message,
+        },
     }
     if details:
-        payload["error_details"] = details
+        payload["error"]["details"] = details
     return JSONResponse(payload, status_code=status_code)
 
 
@@ -105,7 +107,7 @@ async def _healthz(_: Request) -> JSONResponse:
         {
             "ok": True,
             "gateway": True,
-            "proxy": registry._proxy_status(),
+            "gateway_proxy": registry._gateway_proxy_status(),
             "instance_count": len(registry._instances),
             "started_at": registry._gateway_started_at,
         }
@@ -183,12 +185,12 @@ async def _debug_post(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "enabled": DEBUG_ENABLED})
 
 
-async def _proxy_status_handler(_: Request) -> JSONResponse:
-    return JSONResponse(registry._proxy_status())
+async def _gateway_proxy_status_handler(_: Request) -> JSONResponse:
+    return JSONResponse(registry._gateway_proxy_status())
 
 
-async def _ensure_proxy_handler(_: Request) -> JSONResponse:
-    return JSONResponse(registry._proxy_status())
+async def _ensure_gateway_proxy_handler(_: Request) -> JSONResponse:
+    return JSONResponse(registry._gateway_proxy_status())
 
 
 def _signal_gateway_shutdown() -> None:
